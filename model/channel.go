@@ -877,6 +877,12 @@ func DeleteDisabledChannel() (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+func GetAutoDisabledChannels() ([]*Channel, error) {
+	var channels []*Channel
+	err := DB.Where("status = ?", common.ChannelStatusAutoDisabled).Find(&channels).Error
+	return channels, err
+}
+
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {
 	return GetPaginatedChannelTags(DB.Model(&Channel{}), offset, limit)
 }

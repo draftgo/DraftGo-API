@@ -982,3 +982,52 @@ func AutomaticallyTestChannels() {
 		}
 	})
 }
+
+var recoveryProbeOnce sync.Once
+
+func AutomaticallyProbeDisabledChannels() {
+	if !common.IsMasterNode {
+		return
+	}
+	recoveryProbeOnce.Do(func() {
+		for {
+			setting := operation_setting.GetMonitorSetting()
+			if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
+				time.Sleep(1 * time.Minute)
+				continue
+			}
+			for {
+				setting = operation_setting.GetMonitorSetting()
+				if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
+					break
+				}
+				interval := setting.RecoveryProbeMinutes
+				if interval < 1 {
+					interval = 5
+				}
+				time.Sleep(time.Duration(int(math.Round(interval))) * time.Minute)
+				common.SysLog("recovery probe: testing disabled channels")
+				probeDisabledChannels()
+				common.SysLog("recovery probe: finished")
+			}
+		}
+	})
+}
+
+func probeDisabledChannels() {
+	channels, err := model.GetAutoDisabledChannels()
+	if err != nil {
+		common.SysError("recovery probe: failed to get disabled channels: " + err.Error())
+		return
+	}
+	if len(channels) == 0 {
+		return
+	}
+	for _, channel := range channels {
+		result := testChannel(channel, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		if result.newAPIError == nil && service.ShouldEnableChannel(nil, channel.Status) {
+			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+		}
+		time.Sleep(common.RequestInterval)
+	}
+}

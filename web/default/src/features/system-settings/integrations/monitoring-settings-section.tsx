@@ -54,6 +54,8 @@ const numericString = z.string().refine((value) => {
 const monitoringSchema = z
   .object({
     ChannelDisableThreshold: numericString,
+    ChannelDisableWindowMinutes: numericString,
+    ChannelDisableFailureThreshold: numericString,
     QuotaRemindThreshold: numericString,
     AutomaticDisableChannelEnabled: z.boolean(),
     AutomaticEnableChannelEnabled: z.boolean(),
@@ -63,6 +65,11 @@ const monitoringSchema = z
     monitor_setting: z.object({
       auto_test_channel_enabled: z.boolean(),
       auto_test_channel_minutes: z.coerce
+        .number()
+        .int()
+        .min(1, 'Interval must be at least 1 minute'),
+      recovery_mode: z.enum(['follow', 'independent']),
+      recovery_probe_minutes: z.coerce
         .number()
         .int()
         .min(1, 'Interval must be at least 1 minute'),
@@ -102,6 +109,8 @@ type MonitoringFormInput = z.input<typeof monitoringSchema>
 type MonitoringSettingsSectionProps = {
   defaultValues: {
     ChannelDisableThreshold: string
+    ChannelDisableWindowMinutes: string
+    ChannelDisableFailureThreshold: string
     QuotaRemindThreshold: string
     AutomaticDisableChannelEnabled: boolean
     AutomaticEnableChannelEnabled: boolean
@@ -110,6 +119,8 @@ type MonitoringSettingsSectionProps = {
     AutomaticRetryStatusCodes: string
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
+    'monitor_setting.recovery_mode': string
+    'monitor_setting.recovery_probe_minutes': number
   }
 }
 
@@ -119,6 +130,8 @@ function normalizeLineEndings(value: string) {
 
 type NormalizedMonitoringValues = {
   ChannelDisableThreshold: string
+  ChannelDisableWindowMinutes: string
+  ChannelDisableFailureThreshold: string
   QuotaRemindThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
@@ -127,12 +140,16 @@ type NormalizedMonitoringValues = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.recovery_mode': string
+  'monitor_setting.recovery_probe_minutes': number
 }
 
 const buildFormDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): MonitoringFormInput => ({
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
+  ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
+  ChannelDisableFailureThreshold: defaults.ChannelDisableFailureThreshold ?? '3',
   QuotaRemindThreshold: defaults.QuotaRemindThreshold ?? '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -146,6 +163,10 @@ const buildFormDefaults = (
       defaults['monitor_setting.auto_test_channel_enabled'],
     auto_test_channel_minutes:
       defaults['monitor_setting.auto_test_channel_minutes'],
+    recovery_mode:
+      (defaults['monitor_setting.recovery_mode'] as 'follow' | 'independent') ?? 'follow',
+    recovery_probe_minutes:
+      defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
   },
 })
 
@@ -153,6 +174,8 @@ const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
+  ChannelDisableWindowMinutes: (defaults.ChannelDisableWindowMinutes ?? '5').trim(),
+  ChannelDisableFailureThreshold: (defaults.ChannelDisableFailureThreshold ?? '3').trim(),
   QuotaRemindThreshold: (defaults.QuotaRemindThreshold ?? '').trim(),
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -169,12 +192,18 @@ const normalizeDefaults = (
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
     defaults['monitor_setting.auto_test_channel_minutes'],
+  'monitor_setting.recovery_mode':
+    defaults['monitor_setting.recovery_mode'] ?? 'follow',
+  'monitor_setting.recovery_probe_minutes':
+    defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
 })
 
 const normalizeFormValues = (
   values: MonitoringFormValues
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
+  ChannelDisableWindowMinutes: values.ChannelDisableWindowMinutes.trim(),
+  ChannelDisableFailureThreshold: values.ChannelDisableFailureThreshold.trim(),
   QuotaRemindThreshold: values.QuotaRemindThreshold.trim(),
   AutomaticDisableChannelEnabled: values.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: values.AutomaticEnableChannelEnabled,
@@ -191,6 +220,10 @@ const normalizeFormValues = (
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
+  'monitor_setting.recovery_mode':
+    values.monitor_setting.recovery_mode,
+  'monitor_setting.recovery_probe_minutes':
+    values.monitor_setting.recovery_probe_minutes,
 })
 
 export function MonitoringSettingsSection({
@@ -402,6 +435,126 @@ export function MonitoringSettingsSection({
                     />
                   </FormControl>
                 </SettingsSwitchItem>
+              )}
+            />
+          </div>
+
+          <div className='grid gap-6 md:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='ChannelDisableWindowMinutes'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Failure window (minutes)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Time window for counting consecutive failures before disabling'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='ChannelDisableFailureThreshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Failure threshold (times)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Number of failures within the window before auto-disabling'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className='grid gap-6 md:grid-cols-2'>
+            <FormField
+              control={form.control}
+              name='monitor_setting.recovery_mode'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recovery mode')}</FormLabel>
+                  <FormControl>
+                    <select
+                      className='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm'
+                      value={field.value}
+                      onChange={field.onChange}
+                    >
+                      <option value='follow'>
+                        {t('Follow scheduled tests')}
+                      </option>
+                      <option value='independent'>
+                        {t('Independent probing')}
+                      </option>
+                    </select>
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'How disabled channels are re-tested for recovery'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='monitor_setting.recovery_probe_minutes'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recovery probe interval (minutes)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      disabled={form.watch('monitor_setting.recovery_mode') !== 'independent'}
+                      value={
+                        typeof field.value === 'number' &&
+                        Number.isFinite(field.value)
+                          ? field.value
+                          : ''
+                      }
+                      onChange={(event) =>
+                        field.onChange(event.target.valueAsNumber)
+                      }
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'How often disabled channels are probed for recovery'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
               )}
             />
           </div>

@@ -274,6 +274,8 @@ export type OperationsSettings = {
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
   ChannelDisableThreshold: string
+  ChannelDisableWindowMinutes: string
+  ChannelDisableFailureThreshold: string
   QuotaRemindThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
@@ -282,6 +284,8 @@ export type OperationsSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.recovery_mode': string
+  'monitor_setting.recovery_probe_minutes': number
   SMTPServer: string
   SMTPPort: string
   SMTPAccount: string
