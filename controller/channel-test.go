@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,7 +75,7 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, timeoutSeconds int) testResult {
 	tik := time.Now()
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
@@ -158,6 +159,12 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 		URL:    &url.URL{Path: requestPath}, // 使用动态路径
 		Body:   nil,
 		Header: make(http.Header),
+	}
+
+	if timeoutSeconds > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+		defer cancel()
+		c.Request = c.Request.WithContext(ctx)
 	}
 
 	cache, err := model.GetUserCache(testUserID)
@@ -851,13 +858,17 @@ func TestChannel(c *gin.Context) {
 	testModel := c.Query("model")
 	endpointType := c.Query("endpoint_type")
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
+	timeoutSeconds, _ := strconv.Atoi(c.Query("timeout"))
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = common.ChannelTestDefaultTimeout
+	}
 	testUserID, err := resolveChannelTestUserID(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	tik := time.Now()
-	result := testChannel(channel, testUserID, testModel, endpointType, isStream)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream, timeoutSeconds)
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -928,7 +939,7 @@ func testAllChannels(notify bool) error {
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
-			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 
@@ -1049,8 +1060,13 @@ func probeDisabledChannels() {
 	if len(channels) == 0 {
 		return
 	}
+	probeUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		common.SysError("recovery probe: " + err.Error())
+		return
+	}
 	for _, channel := range channels {
-		result := testChannel(channel, "", "", shouldUseStreamForAutomaticChannelTest(channel))
+		result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
 		if result.newAPIError == nil && service.ShouldEnableChannel(nil, channel.Status) {
 			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 		}

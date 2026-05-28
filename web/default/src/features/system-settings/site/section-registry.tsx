@@ -23,6 +23,7 @@ import {
   serializeHeaderNavModules,
   serializeSidebarModulesAdmin,
 } from '../maintenance/config'
+import { HeaderCustomLinksSection } from '../maintenance/header-custom-links-section'
 import { HeaderNavigationSection } from '../maintenance/header-navigation-section'
 import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
@@ -73,6 +74,15 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'header-custom-links',
+    titleKey: 'Custom navigation links',
+    build: (settings: SiteSettings) => (
+      <HeaderCustomLinksSection
+        initialValue={settings.HeaderNavCustomLinks ?? ''}
+      />
+    ),
   },
   {
     id: 'sidebar-modules',

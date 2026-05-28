@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import { parseCustomNavLinks } from '@/features/system-settings/maintenance/header-custom-links-section'
 import { useStatus } from '@/hooks/use-status'
 
 export type TopNavLink = {
@@ -99,5 +100,81 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
+  // Custom links from HeaderNavCustomLinks
+  const customLinksRaw = (status as Record<string, unknown> | null)
+    ?.HeaderNavCustomLinks as string | undefined
+  const customLinks = parseCustomNavLinks(customLinksRaw)
+
+  for (const link of customLinks) {
+    if (!link.title.trim() || !link.url.trim()) continue
+    const resolvedUrl = resolveNavLinkUrl(link.url, status)
+
+    if (link.showNav) {
+      if (link.type === 'html') {
+        const idx = customLinks.indexOf(link)
+        const embedParams = new URLSearchParams({
+          idx: String(idx),
+          title: link.title,
+          type: 'html',
+        })
+        links.push({
+          title: link.title,
+          href: `/embed?${embedParams.toString()}`,
+          external: false,
+        })
+      } else {
+        const embedParams = new URLSearchParams({
+          url: resolvedUrl,
+          title: link.title,
+          type: 'link',
+        })
+        links.push({
+          title: link.title,
+          href: `/embed?${embedParams.toString()}`,
+          external: false,
+        })
+      }
+    } else {
+      links.push({
+        title: link.title,
+        href: resolvedUrl,
+        external: link.external,
+      })
+    }
+  }
+
   return links
+}
+
+function resolveNavLinkUrl(
+  template: string,
+  status: Record<string, unknown> | null | undefined
+): string {
+  let url = template
+  const serverAddress = (status?.server_address as string) || ''
+
+  if (url.includes('{address}')) {
+    url = url.split('{address}').join(encodeURIComponent(serverAddress))
+  }
+
+  if (url.includes('{key}')) {
+    let apiKey = ''
+    try {
+      const stored = localStorage.getItem('user')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const token = parsed?.token || parsed?.key || ''
+        apiKey = token
+          ? token.startsWith('sk-')
+            ? token
+            : `sk-${token}`
+          : ''
+      }
+    } catch {
+      /* empty */
+    }
+    url = url.split('{key}').join(apiKey)
+  }
+
+  return url
 }

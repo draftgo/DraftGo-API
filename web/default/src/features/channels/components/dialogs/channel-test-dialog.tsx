@@ -221,6 +221,7 @@ export function ChannelTestDialog({
   const { currentRow } = useChannels()
   const [endpointType, setEndpointType] = useState('auto')
   const [isStreamTest, setIsStreamTest] = useState(false)
+  const [testTimeout, setTestTimeout] = useState(30)
   const [searchTerm, setSearchTerm] = useState('')
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
@@ -238,6 +239,7 @@ export function ChannelTestDialog({
   const resetState = useCallback(() => {
     setEndpointType('auto')
     setIsStreamTest(false)
+    setTestTimeout(30)
     setSearchTerm('')
     setTestResults({})
     setRowSelection({})
@@ -323,6 +325,7 @@ export function ChannelTestDialog({
             testModel: model,
             endpointType: endpointType === 'auto' ? undefined : endpointType,
             stream: isStreamTest || undefined,
+            timeout: testTimeout > 0 ? testTimeout : undefined,
             silent,
           },
           (success, responseTime, error, errorCode) => {
@@ -350,6 +353,7 @@ export function ChannelTestDialog({
       currentRow,
       endpointType,
       isStreamTest,
+      testTimeout,
       markModelTesting,
       t,
       updateTestResult,
@@ -539,7 +543,7 @@ export function ChannelTestDialog({
           </DialogHeader>
 
           <div className='max-h-[78vh] space-y-4 overflow-y-auto py-4 pr-1'>
-            <div className='grid gap-4 md:grid-cols-2'>
+            <div className='grid gap-4 md:grid-cols-3'>
               <div className='grid gap-2'>
                 <Label htmlFor='endpoint-type'>{t('Endpoint Type')}</Label>
                 <Select
@@ -589,6 +593,20 @@ export function ChannelTestDialog({
                 </div>
                 <p className='text-muted-foreground text-xs'>
                   {t('Enable streaming mode for the test request.')}
+                </p>
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='test-timeout'>{t('Timeout (seconds)')}</Label>
+                <Input
+                  id='test-timeout'
+                  type='number'
+                  min={0}
+                  max={300}
+                  value={testTimeout}
+                  onChange={(e) => setTestTimeout(Number(e.target.value) || 0)}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  {t('Maximum wait time per test. 0 means no timeout.')}
                 </p>
               </div>
             </div>

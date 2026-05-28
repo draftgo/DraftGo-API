@@ -22,7 +22,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from './api'
 import { PlaygroundChat } from './components/playground-chat'
+import { PlaygroundDataBrowser } from './components/playground-data-browser'
 import { PlaygroundInput } from './components/playground-input'
+import { PlaygroundJsonViewer } from './components/playground-json-viewer'
+import { PlaygroundSettings } from './components/playground-settings'
 import { usePlaygroundState, useChatHandler } from './hooks'
 import { createUserMessage, createLoadingAssistantMessage } from './lib'
 import type { Message as MessageType } from './types'
@@ -39,6 +42,9 @@ export function Playground() {
     setModels,
     setGroups,
     updateConfig,
+    updateParameterEnabled,
+    clearMessages,
+    resetConfig,
   } = usePlaygroundState()
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
@@ -208,6 +214,27 @@ export function Playground() {
 
       {/* Input area: center content and constrain to the same container width */}
       <div className='mx-auto w-full max-w-4xl'>
+        {/* Toolbar */}
+        <div className='flex items-center justify-end gap-1.5 px-1 pb-2'>
+          <PlaygroundJsonViewer
+            messages={messages}
+            config={config}
+            parameterEnabled={parameterEnabled}
+          />
+          <PlaygroundDataBrowser
+            messages={messages}
+            onClearMessages={clearMessages}
+            onImportMessages={(imported) => updateMessages(imported)}
+          />
+          <PlaygroundSettings
+            config={config}
+            parameterEnabled={parameterEnabled}
+            onConfigChange={updateConfig}
+            onParameterEnabledChange={updateParameterEnabled}
+            onReset={resetConfig}
+          />
+        </div>
+
         <PlaygroundInput
           disabled={isGenerating}
           groups={groups}

@@ -26,6 +26,7 @@ import type { UpdateOptionRequest } from '../types'
 const STATUS_RELATED_KEYS = [
   'theme.frontend',
   'HeaderNavModules',
+  'HeaderNavCustomLinks',
   'SidebarModulesAdmin',
   'Notice',
   'LogConsumeEnabled',
