@@ -398,6 +398,35 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+	setupContextForChannel(c, channel)
+
+	if newAPIError := SetupContextForNextEnabledKey(c, channel); newAPIError != nil {
+		return newAPIError
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
+
+	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)
+
+	setupChannelTypeContext(c, channel)
+	return nil
+}
+
+func SetupContextForSelectedChannelKey(c *gin.Context, channel *model.Channel, modelName string, key string, index int) *types.NewAPIError {
+	c.Set("original_model", modelName) // for retry
+	if channel == nil {
+		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	setupContextForChannel(c, channel)
+	SetupContextForChannelKey(c, channel, key, index)
+	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
+
+	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)
+
+	setupChannelTypeContext(c, channel)
+	return nil
+}
+
+func setupContextForChannel(c *gin.Context, channel *model.Channel) {
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)
@@ -417,24 +446,9 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelAutoBan, channel.GetAutoBan())
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
+}
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
-	if newAPIError != nil {
-		return newAPIError
-	}
-	if channel.ChannelInfo.IsMultiKey {
-		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)
-		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
-	} else {
-		// 必须设置为 false，否则在重试到单个 key 的时候会导致日志显示错误
-		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, false)
-	}
-	// c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", key))
-	common.SetContextKey(c, constant.ContextKeyChannelKey, key)
-	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, channel.GetBaseURL())
-
-	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)
-
+func setupChannelTypeContext(c *gin.Context, channel *model.Channel) {
 	// TODO: api_version统一
 	switch channel.Type {
 	case constant.ChannelTypeAzure:
@@ -454,7 +468,30 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
 	}
+}
+
+func SetupContextForNextEnabledKey(c *gin.Context, channel *model.Channel) *types.NewAPIError {
+	if channel == nil {
+		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+
+	key, index, newAPIError := channel.GetNextEnabledKey()
+	if newAPIError != nil {
+		return newAPIError
+	}
+	SetupContextForChannelKey(c, channel, key, index)
 	return nil
+}
+
+func SetupContextForChannelKey(c *gin.Context, channel *model.Channel, key string, index int) {
+	if channel.ChannelInfo.IsMultiKey {
+		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, true)
+		common.SetContextKey(c, constant.ContextKeyChannelMultiKeyIndex, index)
+	} else {
+		// 必须设置为 false，否则在重试到单个 key 的时候会导致日志显示错误
+		common.SetContextKey(c, constant.ContextKeyChannelIsMultiKey, false)
+	}
+	common.SetContextKey(c, constant.ContextKeyChannelKey, key)
 }
 
 // extractModelNameFromGeminiPath 从 Gemini API URL 路径中提取模型名

@@ -44,6 +44,10 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
+type channelTestOptions struct {
+	forcedMultiKeyIndex *int
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -75,8 +79,12 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, timeoutSeconds int) testResult {
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool, timeoutSeconds int, options ...channelTestOptions) testResult {
 	tik := time.Now()
+	testOptions := channelTestOptions{}
+	if len(options) > 0 {
+		testOptions = options[0]
+	}
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -184,7 +192,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	newAPIError := setupChannelTestContext(c, channel, testModel, testOptions)
 	if newAPIError != nil {
 		return testResult{
 			context:     c,
@@ -529,6 +537,21 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	}
 }
 
+func setupChannelTestContext(c *gin.Context, channel *model.Channel, testModel string, options channelTestOptions) *types.NewAPIError {
+	if options.forcedMultiKeyIndex == nil {
+		return middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	}
+	if !channel.ChannelInfo.IsMultiKey {
+		return types.NewError(errors.New("key_index is only supported for multi-key channels"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	keys := channel.GetKeys()
+	keyIndex := *options.forcedMultiKeyIndex
+	if keyIndex < 0 || keyIndex >= len(keys) {
+		return types.NewError(fmt.Errorf("key_index %d is out of range", keyIndex), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	return middleware.SetupContextForSelectedChannelKey(c, channel, testModel, keys[keyIndex], keyIndex)
+}
+
 func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Request) error {
 	if info == nil {
 		return nil
@@ -862,13 +885,22 @@ func TestChannel(c *gin.Context) {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = common.ChannelTestDefaultTimeout
 	}
+	testOptions := channelTestOptions{}
+	if keyIndexValue := strings.TrimSpace(c.Query("key_index")); keyIndexValue != "" {
+		keyIndex, parseErr := strconv.Atoi(keyIndexValue)
+		if parseErr != nil {
+			common.ApiError(c, fmt.Errorf("invalid key_index: %w", parseErr))
+			return
+		}
+		testOptions.forcedMultiKeyIndex = &keyIndex
+	}
 	testUserID, err := resolveChannelTestUserID(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	tik := time.Now()
-	result := testChannel(channel, testUserID, testModel, endpointType, isStream, timeoutSeconds)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream, timeoutSeconds, testOptions)
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -1052,7 +1084,7 @@ func AutomaticallyProbeDisabledChannels() {
 }
 
 func probeDisabledChannels() {
-	channels, err := model.GetAutoDisabledChannels()
+	channels, err := getRecoveryProbeChannels()
 	if err != nil {
 		common.SysError("recovery probe: failed to get disabled channels: " + err.Error())
 		return
@@ -1066,8 +1098,52 @@ func probeDisabledChannels() {
 		return
 	}
 	for _, channel := range channels {
-		result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
-		if result.newAPIError == nil && service.ShouldEnableChannel(nil, channel.Status) {
+		if channel.ChannelInfo.IsMultiKey {
+			probeMultiKeyRecovery(channel, probeUserID)
+		} else {
+			result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
+			if result.newAPIError == nil && service.ShouldEnableChannel(nil, channel.Status) {
+				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+			}
+		}
+		time.Sleep(common.RequestInterval)
+	}
+}
+
+func getRecoveryProbeChannels() ([]*model.Channel, error) {
+	autoDisabledChannels, err := model.GetAutoDisabledChannels()
+	if err != nil {
+		return nil, err
+	}
+	multiKeyChannels, err := model.GetChannelsWithAutoDisabledMultiKeys()
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[int]struct{}, len(autoDisabledChannels)+len(multiKeyChannels))
+	channels := make([]*model.Channel, 0, len(autoDisabledChannels)+len(multiKeyChannels))
+	for _, channel := range append(autoDisabledChannels, multiKeyChannels...) {
+		if channel == nil {
+			continue
+		}
+		if _, ok := seen[channel.Id]; ok {
+			continue
+		}
+		seen[channel.Id] = struct{}{}
+		channels = append(channels, channel)
+	}
+	return channels, nil
+}
+
+func probeMultiKeyRecovery(channel *model.Channel, probeUserID int) {
+	for keyIndex, status := range channel.ChannelInfo.MultiKeyStatusList {
+		if status != common.ChannelStatusAutoDisabled {
+			continue
+		}
+		idx := keyIndex
+		result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout, channelTestOptions{
+			forcedMultiKeyIndex: &idx,
+		})
+		if result.newAPIError == nil && common.AutomaticEnableChannelEnabled {
 			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 		}
 		time.Sleep(common.RequestInterval)

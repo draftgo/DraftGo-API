@@ -216,6 +216,7 @@ export async function handleTestChannel(
     endpointType?: string
     stream?: boolean
     timeout?: number
+    keyIndex?: number
     silent?: boolean
   },
   onTestComplete?: (
@@ -226,7 +227,12 @@ export async function handleTestChannel(
   ) => void
 ): Promise<void> {
   const payload =
-    options && (options.testModel || options.endpointType || options.stream || options.timeout)
+    options &&
+    (options.testModel ||
+      options.endpointType ||
+      options.stream ||
+      options.timeout ||
+      typeof options.keyIndex === 'number')
       ? {
           ...(options.testModel ? { model: options.testModel } : {}),
           ...(options.endpointType
@@ -234,6 +240,9 @@ export async function handleTestChannel(
             : {}),
           ...(options.stream ? { stream: true } : {}),
           ...(options.timeout ? { timeout: options.timeout } : {}),
+          ...(typeof options.keyIndex === 'number'
+            ? { key_index: options.keyIndex }
+            : {}),
         }
       : undefined
 

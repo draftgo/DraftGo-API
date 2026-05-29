@@ -63,6 +63,7 @@ import {
   formatTimestamp,
   getMultiKeyStatusConfig,
   getMultiKeyConfirmMessage,
+  handleTestChannel,
   isDestructiveAction,
 } from '../../lib'
 import type { KeyStatus, MultiKeyConfirmAction } from '../../types'
@@ -99,6 +100,9 @@ export function MultiKeyManageDialog({
   const [confirmAction, setConfirmAction] =
     useState<MultiKeyConfirmAction | null>(null)
   const [isPerformingAction, setIsPerformingAction] = useState(false)
+  const [testingKeyIndexes, setTestingKeyIndexes] = useState<Set<number>>(
+    () => new Set()
+  )
 
   // Reset and load data when dialog opens
   useEffect(() => {
@@ -204,6 +208,31 @@ export function MultiKeyManageDialog({
     } finally {
       setIsPerformingAction(false)
       setConfirmAction(null)
+    }
+  }
+
+  const handleTestKey = async (keyIndex: number) => {
+    if (!currentRow) return
+
+    setTestingKeyIndexes((prev) => new Set(prev).add(keyIndex))
+    try {
+      await handleTestChannel(
+        currentRow.id,
+        {
+          keyIndex,
+        },
+        (success) => {
+          if (success) {
+            loadKeyStatus(currentPage, pageSize)
+          }
+        }
+      )
+    } finally {
+      setTestingKeyIndexes((prev) => {
+        const next = new Set(prev)
+        next.delete(keyIndex)
+        return next
+      })
     }
   }
 
@@ -396,6 +425,8 @@ export function MultiKeyManageDialog({
                               keyIndex={key.index}
                               status={key.status}
                               onAction={setConfirmAction}
+                              onTest={handleTestKey}
+                              isTesting={testingKeyIndexes.has(key.index)}
                             />
                           </TableCell>
                         </TableRow>

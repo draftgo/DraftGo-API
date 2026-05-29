@@ -667,6 +667,12 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 		}
 		if status == common.ChannelStatusEnabled {
 			delete(channel.ChannelInfo.MultiKeyStatusList, keyIndex)
+			if channel.ChannelInfo.MultiKeyDisabledReason != nil {
+				delete(channel.ChannelInfo.MultiKeyDisabledReason, keyIndex)
+			}
+			if channel.ChannelInfo.MultiKeyDisabledTime != nil {
+				delete(channel.ChannelInfo.MultiKeyDisabledTime, keyIndex)
+			}
 		} else {
 			channel.ChannelInfo.MultiKeyStatusList[keyIndex] = status
 			if channel.ChannelInfo.MultiKeyDisabledReason == nil {
@@ -747,7 +753,7 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	if err != nil {
 		return false
 	} else {
-		if channel.Status == status {
+		if channel.Status == status && !channel.ChannelInfo.IsMultiKey {
 			return false
 		}
 
@@ -759,6 +765,9 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 			handlerMultiKeyUpdate(channel, usingKey, status, reason)
 			pollingLock.Unlock()
 			if beforeStatus != channel.Status {
+				shouldUpdateAbilities = true
+			}
+			if status == common.ChannelStatusEnabled && beforeStatus == common.ChannelStatusEnabled {
 				shouldUpdateAbilities = true
 			}
 		} else {
@@ -881,6 +890,30 @@ func GetAutoDisabledChannels() ([]*Channel, error) {
 	var channels []*Channel
 	err := DB.Where("status = ?", common.ChannelStatusAutoDisabled).Find(&channels).Error
 	return channels, err
+}
+
+func GetChannelsWithAutoDisabledMultiKeys() ([]*Channel, error) {
+	var channels []*Channel
+	err := DB.Find(&channels).Error
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*Channel, 0, len(channels))
+	for _, channel := range channels {
+		if channel == nil || !channel.ChannelInfo.IsMultiKey {
+			continue
+		}
+		if channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		for _, status := range channel.ChannelInfo.MultiKeyStatusList {
+			if status == common.ChannelStatusAutoDisabled {
+				result = append(result, channel)
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {

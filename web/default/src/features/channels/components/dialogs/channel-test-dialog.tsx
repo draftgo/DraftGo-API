@@ -83,6 +83,8 @@ import {
 } from '@/components/drawer-layout'
 import { StatusBadge } from '@/components/status-badge'
 import { formatResponseTime, handleTestChannel } from '../../lib'
+import { getMultiKeyStatus } from '../../api'
+import type { KeyStatus } from '../../types'
 import { useChannels } from '../channels-provider'
 
 type ChannelTestDialogProps = {
@@ -220,6 +222,9 @@ export function ChannelTestDialog({
   const { t } = useTranslation()
   const { currentRow } = useChannels()
   const [endpointType, setEndpointType] = useState('auto')
+  const [keyIndex, setKeyIndex] = useState('auto')
+  const [multiKeyStatuses, setMultiKeyStatuses] = useState<KeyStatus[]>([])
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false)
   const [isStreamTest, setIsStreamTest] = useState(false)
   const [testTimeout, setTestTimeout] = useState(30)
   const [searchTerm, setSearchTerm] = useState('')
@@ -238,6 +243,9 @@ export function ChannelTestDialog({
 
   const resetState = useCallback(() => {
     setEndpointType('auto')
+    setKeyIndex('auto')
+    setMultiKeyStatuses([])
+    setIsLoadingKeys(false)
     setIsStreamTest(false)
     setTestTimeout(30)
     setSearchTerm('')
@@ -255,6 +263,39 @@ export function ChannelTestDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentRow?.id, resetState])
+
+  useEffect(() => {
+    if (!open || !currentRow?.channel_info?.is_multi_key) return
+
+    let ignore = false
+    setIsLoadingKeys(true)
+    getMultiKeyStatus(currentRow.id, 1, Math.max(currentRow.channel_info.multi_key_size || 50, 50))
+      .then((response) => {
+        if (ignore) return
+        if (response.success && response.data) {
+          setMultiKeyStatuses(response.data.keys || [])
+        } else {
+          toast.error(response.message || t('Failed to load key status'))
+        }
+      })
+      .catch((error: unknown) => {
+        if (ignore) return
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to load key status')
+        )
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsLoadingKeys(false)
+        }
+      })
+
+    return () => {
+      ignore = true
+    }
+  }, [open, currentRow?.id, currentRow?.channel_info?.is_multi_key, currentRow?.channel_info?.multi_key_size, t])
 
   const streamDisabled = STREAM_INCOMPATIBLE_ENDPOINTS.has(endpointType)
 
@@ -326,6 +367,7 @@ export function ChannelTestDialog({
             endpointType: endpointType === 'auto' ? undefined : endpointType,
             stream: isStreamTest || undefined,
             timeout: testTimeout > 0 ? testTimeout : undefined,
+            keyIndex: keyIndex === 'auto' ? undefined : Number(keyIndex),
             silent,
           },
           (success, responseTime, error, errorCode) => {
@@ -353,6 +395,7 @@ export function ChannelTestDialog({
       currentRow,
       endpointType,
       isStreamTest,
+      keyIndex,
       testTimeout,
       markModelTesting,
       t,
@@ -409,6 +452,11 @@ export function ChannelTestDialog({
   }
 
   const isAnyTesting = testingModels.size > 0 || isBatchTesting
+  const isMultiKeyChannel = currentRow?.channel_info?.is_multi_key === true
+  const selectedKeyLabel =
+    keyIndex === 'auto'
+      ? t('Auto select')
+      : t('Key #{{index}}', { index: Number(keyIndex) + 1 })
 
   const columns = useMemo<ColumnDef<ModelRow>[]>(
     () => [
@@ -543,7 +591,7 @@ export function ChannelTestDialog({
           </DialogHeader>
 
           <div className='max-h-[78vh] space-y-4 overflow-y-auto py-4 pr-1'>
-            <div className='grid gap-4 md:grid-cols-3'>
+            <div className='grid gap-4 md:grid-cols-4'>
               <div className='grid gap-2'>
                 <Label htmlFor='endpoint-type'>{t('Endpoint Type')}</Label>
                 <Select
@@ -578,6 +626,53 @@ export function ChannelTestDialog({
                   )}
                 </p>
               </div>
+              {isMultiKeyChannel && (
+                <div className='grid gap-2'>
+                  <Label htmlFor='key-index'>{t('Key')}</Label>
+                  <Select
+                    items={[
+                      { value: 'auto', label: t('Auto select') },
+                      ...multiKeyStatuses.map((keyStatus) => ({
+                        value: String(keyStatus.index),
+                        label: `${t('Key #{{index}}', { index: keyStatus.index + 1 })} · ${t(keyStatus.status === 1 ? 'Enabled' : keyStatus.status === 2 ? 'Manual Disabled' : 'Auto Disabled')}`,
+                      })),
+                    ]}
+                    value={keyIndex}
+                    onValueChange={(v) => v !== null && setKeyIndex(v)}
+                    disabled={isLoadingKeys}
+                  >
+                    <SelectTrigger id='key-index'>
+                      <SelectValue placeholder={selectedKeyLabel} />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='auto'>{t('Auto select')}</SelectItem>
+                        {multiKeyStatuses.map((keyStatus) => (
+                          <SelectItem
+                            key={keyStatus.index}
+                            value={String(keyStatus.index)}
+                          >
+                            {t('Key #{{index}}', {
+                              index: keyStatus.index + 1,
+                            })}
+                            {' · '}
+                            {t(
+                              keyStatus.status === 1
+                                ? 'Enabled'
+                                : keyStatus.status === 2
+                                  ? 'Manual Disabled'
+                                  : 'Auto Disabled'
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Select a specific key to test, including disabled keys.')}
+                  </p>
+                </div>
+              )}
               <div className='grid gap-2'>
                 <Label htmlFor='stream-toggle'>{t('Stream Mode')}</Label>
                 <div className='flex items-center gap-2'>
