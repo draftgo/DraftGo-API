@@ -13,6 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	ModelMappingOriginalModelContextKey = "model_mapping_original_model"
+	ModelMappingUpstreamModelContextKey = "model_mapping_upstream_model"
+)
+
 func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Request) error {
 	if info.ChannelMeta == nil {
 		info.ChannelMeta = &common.ChannelMeta{}
@@ -77,5 +82,20 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)
 	}
+	if c != nil && info.IsModelMapped && info.UpstreamModelName != "" && info.UpstreamModelName != originModelName {
+		c.Set(ModelMappingOriginalModelContextKey, originModelName)
+		c.Set(ModelMappingUpstreamModelContextKey, info.UpstreamModelName)
+	}
 	return nil
+}
+
+func HasInternalModelMapping(info *common.RelayInfo) bool {
+	return info != nil && info.ChannelMeta != nil && info.IsModelMapped && info.UpstreamModelName != "" && info.UpstreamModelName != info.OriginModelName
+}
+
+func ClientVisibleModelName(info *common.RelayInfo, fallback string) string {
+	if info != nil && info.OriginModelName != "" {
+		return info.OriginModelName
+	}
+	return fallback
 }

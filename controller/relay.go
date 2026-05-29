@@ -89,7 +89,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			errorMessage := newAPIError.Error()
+			if relayInfo, ok := c.Get("relay_info"); ok {
+				if info, ok := relayInfo.(*relaycommon.RelayInfo); ok {
+					errorMessage = helper.RewriteOpenAIErrorModelForClient(info, errorMessage)
+				}
+			}
+			newAPIError.SetMessage(common.MessageWithRequestId(errorMessage, requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -122,6 +128,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	c.Set("relay_info", relayInfo)
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -397,7 +404,13 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		errorContent := err.MaskSensitiveErrorWithStatusCode()
+		if relayInfo, ok := c.Get("relay_info"); ok {
+			if info, ok := relayInfo.(*relaycommon.RelayInfo); ok {
+				errorContent = helper.RewriteOpenAIErrorModelForClient(info, errorContent)
+			}
+		}
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, errorContent, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }

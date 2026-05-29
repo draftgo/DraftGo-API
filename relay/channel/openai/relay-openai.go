@@ -28,6 +28,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !forceFormat && !thinkToContent {
+		data = helper.RewriteChatCompletionStreamDataForClient(info, data)
 		return helper.StringData(c, data)
 	}
 
@@ -35,6 +36,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if err := common.UnmarshalJsonStr(data, &lastStreamResponse); err != nil {
 		return err
 	}
+	helper.RewriteChatCompletionStreamModelForClient(info, &lastStreamResponse)
 
 	if !thinkToContent {
 		return helper.ObjectData(c, lastStreamResponse)
@@ -111,7 +113,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	model := info.UpstreamModelName
+	model := helper.ClientVisibleModelName(info, info.UpstreamModelName)
 	var responseId string
 	var createAt int64 = 0
 	var systemFingerprint string
@@ -263,14 +265,21 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 				return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 			}
 			bodyMap["usage"] = simpleResponse.Usage
+			if helper.HasInternalModelMapping(info) {
+				bodyMap["model"] = helper.ClientVisibleModelName(info, simpleResponse.Model)
+			}
 			responseBody, _ = common.Marshal(bodyMap)
 		}
 		if forceFormat {
+			if helper.HasInternalModelMapping(info) {
+				simpleResponse.Model = helper.ClientVisibleModelName(info, simpleResponse.Model)
+			}
 			responseBody, err = common.Marshal(simpleResponse)
 			if err != nil {
 				return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 			}
 		} else {
+			responseBody = helper.RewriteOpenAIResponseModelForClient(info, responseBody)
 			break
 		}
 	case types.RelayFormatClaude:
