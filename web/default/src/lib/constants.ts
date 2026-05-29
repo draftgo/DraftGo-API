@@ -24,6 +24,16 @@ For commercial licensing, please contact support@quantumnous.com
 export const DEFAULT_SYSTEM_NAME = 'DraftGo'
 export const DEFAULT_LOGO = '/logo.png'
 
+export function normalizeSystemName(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_SYSTEM_NAME
+  const trimmed = value.trim()
+  if (!trimmed) return DEFAULT_SYSTEM_NAME
+  if (trimmed.replace(/\s+/g, '').toLowerCase() === 'newapi') {
+    return DEFAULT_SYSTEM_NAME
+  }
+  return trimmed
+}
+
 // LocalStorage Keys
 export const STORAGE_KEYS = {
   SYSTEM_NAME: 'system_name',

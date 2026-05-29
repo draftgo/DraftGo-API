@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { getStatus } from '@/lib/api'
+import { normalizeSystemName } from '@/lib/constants'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
@@ -146,7 +147,12 @@ function getCachedStatus(): Record<string, unknown> | null {
   try {
     if (typeof window === 'undefined') return null
     const raw = window.localStorage.getItem('status')
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : null
+    if (!raw) return null
+    const status = JSON.parse(raw) as Record<string, unknown>
+    if ('system_name' in status) {
+      status.system_name = normalizeSystemName(status.system_name)
+    }
+    return status
   } catch {
     return null
   }
@@ -155,7 +161,13 @@ function getCachedStatus(): Record<string, unknown> | null {
 function cacheStatus(status: Record<string, unknown> | null): void {
   try {
     if (typeof window !== 'undefined' && status) {
-      window.localStorage.setItem('status', JSON.stringify(status))
+      window.localStorage.setItem(
+        'status',
+        JSON.stringify({
+          ...status,
+          system_name: normalizeSystemName(status.system_name),
+        })
+      )
     }
   } catch {
     /* empty */

@@ -14,7 +14,9 @@ import (
 
 var StartTime = time.Now().Unix() // unit: second
 var Version = "v0.0.0"            // this hard coding will be replaced automatically when building, no need to manually change
-var SystemName = "DraftGo"
+const DefaultSystemName = "DraftGo"
+
+var SystemName = DefaultSystemName
 var Footer = ""
 var Logo = ""
 var TopUpLink = ""
@@ -23,6 +25,14 @@ var themeValue atomic.Value // stores string; safe for concurrent read/write
 
 func init() {
 	themeValue.Store("classic")
+}
+
+func NormalizeSystemName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" || strings.EqualFold(strings.ReplaceAll(trimmed, " ", ""), "newapi") {
+		return DefaultSystemName
+	}
+	return trimmed
 }
 
 func GetTheme() string {

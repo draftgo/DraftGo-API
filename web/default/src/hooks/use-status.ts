@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 import { getStatus } from '@/lib/api'
+import { normalizeSystemName } from '@/lib/constants'
 import type { SystemStatus } from '@/features/auth/types'
 import { mapStatusDataToConfig } from './use-system-config'
 
@@ -27,7 +28,12 @@ function getInitialStatus(): SystemStatus | undefined {
   try {
     if (typeof window !== 'undefined') {
       const saved = window.localStorage.getItem('status')
-      return saved ? (JSON.parse(saved) as SystemStatus) : undefined
+      if (!saved) return undefined
+      const status = JSON.parse(saved) as SystemStatus
+      if (status?.system_name) {
+        status.system_name = normalizeSystemName(status.system_name)
+      }
+      return status
     }
   } catch {
     /* empty */
@@ -57,7 +63,13 @@ export function useStatus() {
       // Save to localStorage
       try {
         if (typeof window !== 'undefined' && status) {
-          window.localStorage.setItem('status', JSON.stringify(status))
+          window.localStorage.setItem(
+            'status',
+            JSON.stringify({
+              ...status,
+              system_name: normalizeSystemName(status.system_name),
+            })
+          )
         }
       } catch {
         /* empty */

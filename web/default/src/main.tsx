@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import '@/lib/dayjs'
+import { normalizeSystemName } from '@/lib/constants'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -129,7 +130,7 @@ const rootElement = document.getElementById('root')!
       const saved = localStorage.getItem('status')
       if (saved) {
         const s = JSON.parse(saved)
-        if (s?.system_name) apply(s.system_name)
+        if (s?.system_name) apply(normalizeSystemName(s.system_name))
         if (s?.logo) applyFaviconToDom(s.logo)
       }
     } catch {
@@ -139,9 +140,15 @@ const rootElement = document.getElementById('root')!
     getStatus()
       .then((s) => {
         if (s?.system_name) {
-          apply(s.system_name as string)
+          apply(normalizeSystemName(s.system_name))
           try {
-            localStorage.setItem('status', JSON.stringify(s))
+            localStorage.setItem(
+              'status',
+              JSON.stringify({
+                ...s,
+                system_name: normalizeSystemName(s.system_name),
+              })
+            )
           } catch {
             /* empty */
           }

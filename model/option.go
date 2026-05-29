@@ -189,6 +189,9 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	for _, option := range options {
+		if option.Key == "SystemName" {
+			option.Value = common.NormalizeSystemName(option.Value)
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
@@ -205,6 +208,9 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if key == "SystemName" {
+		value = common.NormalizeSystemName(value)
+	}
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -231,6 +237,10 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
+			if k == "SystemName" {
+				v = common.NormalizeSystemName(v)
+				values[k] = v
+			}
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -254,6 +264,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if key == "SystemName" {
+		value = common.NormalizeSystemName(value)
+	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 	common.OptionMap[key] = value
@@ -479,7 +492,7 @@ func updateOptionMap(key string, value string) (err error) {
 	case "Footer":
 		common.Footer = value
 	case "SystemName":
-		common.SystemName = value
+		common.SystemName = common.NormalizeSystemName(value)
 	case "Logo":
 		common.Logo = value
 	case "WeChatServerAddress":

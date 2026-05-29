@@ -66,18 +66,24 @@ const (
 	LogTypeRefund  = 6
 )
 
+func sanitizeUserLogOther(other string) string {
+	otherMap, _ := common.StrToMap(other)
+	if otherMap == nil {
+		return common.MapToJsonStr(otherMap)
+	}
+	// Remove admin-only debug fields and model-mapping details from user logs.
+	delete(otherMap, "admin_info")
+	delete(otherMap, "is_model_mapped")
+	delete(otherMap, "upstream_model_name")
+	delete(otherMap, "stream_status")
+	return common.MapToJsonStr(otherMap)
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// delete(otherMap, "reject_reason")
-			delete(otherMap, "stream_status")
-		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].UpstreamRequestId = ""
+		logs[i].Other = sanitizeUserLogOther(logs[i].Other)
 		logs[i].Id = startIdx + i + 1
 	}
 }

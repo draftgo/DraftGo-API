@@ -49,6 +49,8 @@ export function isRoot() {
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
   if (!system_name) return 'DraftGo';
+  const normalized = system_name.trim().replace(/\s+/g, '').toLowerCase();
+  if (normalized === 'newapi') return 'DraftGo';
   return system_name;
 }
 

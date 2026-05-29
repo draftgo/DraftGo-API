@@ -271,10 +271,12 @@ function renderBillingTag(record, t) {
 
 function renderModelName(record, copyText, t) {
   let other = getLogOther(record.other);
+  const upstreamModelName =
+    other?.admin_info?.upstream_model_name || other?.upstream_model_name;
   let modelMapped =
-    other?.is_model_mapped &&
-    other?.upstream_model_name &&
-    other?.upstream_model_name !== '';
+    (other?.admin_info?.is_model_mapped || other?.is_model_mapped) &&
+    upstreamModelName &&
+    upstreamModelName !== '';
   if (!modelMapped) {
     return renderModelTag(record.model_name, {
       onClick: (event) => {
@@ -303,11 +305,9 @@ function renderModelName(record, copyText, t) {
                     <Typography.Text strong style={{ marginRight: 8 }}>
                       {t('实际模型')}:
                     </Typography.Text>
-                    {renderModelTag(other.upstream_model_name, {
+                    {renderModelTag(upstreamModelName, {
                       onClick: (event) => {
-                        copyText(event, other.upstream_model_name).then(
-                          (r) => {},
-                        );
+                        copyText(event, upstreamModelName).then((r) => {});
                       },
                     })}
                   </div>

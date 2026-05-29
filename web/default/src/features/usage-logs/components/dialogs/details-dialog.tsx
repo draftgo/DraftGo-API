@@ -830,7 +830,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
             )}
 
             {/* Model mapping */}
-            {other?.is_model_mapped && other?.upstream_model_name && (
+            {(other?.admin_info?.is_model_mapped ||
+              other?.is_model_mapped) &&
+              (other?.admin_info?.upstream_model_name ||
+                other?.upstream_model_name) && (
               <DetailSection label={t('Model Mapping')}>
                 <DetailRow
                   label={t('Request Model')}
@@ -839,7 +842,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 />
                 <DetailRow
                   label={t('Actual Model')}
-                  value={other.upstream_model_name}
+                  value={
+                    other.admin_info?.upstream_model_name ||
+                    other.upstream_model_name
+                  }
                   mono
                 />
               </DetailSection>
