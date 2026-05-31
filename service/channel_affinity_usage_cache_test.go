@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP string) *gin.Context {
+func uniqueChannelAffinityStatsValueForTest(t *testing.T, prefix string) string {
+	t.Helper()
+
+	testPrefix := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	return fmt.Sprintf("%s_%s_%d", testPrefix, prefix, time.Now().UnixNano())
+}
+
+func buildChannelAffinityStatsContextForTest(t *testing.T, ruleName, usingGroup, keyFP string) *gin.Context {
+	t.Helper()
+
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	setChannelAffinityContext(ctx, channelAffinityMeta{
@@ -26,10 +36,10 @@ func buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP string)
 }
 
 func TestObserveChannelAffinityUsageCacheByRelayFormat_ClaudeMode(t *testing.T) {
-	ruleName := fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	ruleName := uniqueChannelAffinityStatsValueForTest(t, "rule")
 	usingGroup := "default"
-	keyFP := fmt.Sprintf("fp_%d", time.Now().UnixNano())
-	ctx := buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP)
+	keyFP := uniqueChannelAffinityStatsValueForTest(t, "fp")
+	ctx := buildChannelAffinityStatsContextForTest(t, ruleName, usingGroup, keyFP)
 
 	usage := &dto.Usage{
 		PromptTokens:     100,
@@ -53,10 +63,10 @@ func TestObserveChannelAffinityUsageCacheByRelayFormat_ClaudeMode(t *testing.T) 
 }
 
 func TestObserveChannelAffinityUsageCacheByRelayFormat_MixedMode(t *testing.T) {
-	ruleName := fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	ruleName := uniqueChannelAffinityStatsValueForTest(t, "rule")
 	usingGroup := "default"
-	keyFP := fmt.Sprintf("fp_%d", time.Now().UnixNano())
-	ctx := buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP)
+	keyFP := uniqueChannelAffinityStatsValueForTest(t, "fp")
+	ctx := buildChannelAffinityStatsContextForTest(t, ruleName, usingGroup, keyFP)
 
 	openAIUsage := &dto.Usage{
 		PromptTokens: 100,
@@ -83,10 +93,10 @@ func TestObserveChannelAffinityUsageCacheByRelayFormat_MixedMode(t *testing.T) {
 }
 
 func TestObserveChannelAffinityUsageCacheByRelayFormat_UnsupportedModeKeepsEmpty(t *testing.T) {
-	ruleName := fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	ruleName := uniqueChannelAffinityStatsValueForTest(t, "rule")
 	usingGroup := "default"
-	keyFP := fmt.Sprintf("fp_%d", time.Now().UnixNano())
-	ctx := buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP)
+	keyFP := uniqueChannelAffinityStatsValueForTest(t, "fp")
+	ctx := buildChannelAffinityStatsContextForTest(t, ruleName, usingGroup, keyFP)
 
 	usage := &dto.Usage{
 		PromptTokens: 100,
