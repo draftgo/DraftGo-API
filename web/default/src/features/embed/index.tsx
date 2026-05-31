@@ -16,14 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearch } from '@tanstack/react-router'
 import { PublicLayout } from '@/components/layout'
+import { useTheme } from '@/context/theme-provider'
 import { useStatus } from '@/hooks/use-status'
 import { parseCustomNavLinks } from '@/features/system-settings/maintenance/header-custom-links-section'
 
 export function EmbedPage() {
-  const { url, idx, title, type } = useSearch({ from: '/embed/' }) as {
+  const { url, idx, title, type } = useSearch({ strict: false }) as {
     url?: string
     idx?: string
     title?: string
@@ -31,6 +32,8 @@ export function EmbedPage() {
   }
 
   const { status } = useStatus()
+  const { resolvedTheme } = useTheme()
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
 
   const htmlContent = useMemo(() => {
     if (type !== 'html' || idx == null) return null
@@ -43,6 +46,16 @@ export function EmbedPage() {
   }, [type, idx, status])
 
   const content = type === 'html' ? htmlContent : url
+
+  const postThemeToIframe = useCallback(() => {
+    const iframeWindow = iframeRef.current?.contentWindow
+    if (!iframeWindow) return
+    iframeWindow.postMessage({ themeMode: resolvedTheme }, '*')
+  }, [resolvedTheme])
+
+  useEffect(() => {
+    postThemeToIframe()
+  }, [postThemeToIframe, content])
 
   if (!content) {
     return (
@@ -59,10 +72,12 @@ export function EmbedPage() {
       <PublicLayout showMainContainer={false}>
         <div className='h-[calc(100svh-4rem)] pt-16'>
           <iframe
+            ref={iframeRef}
             srcDoc={content}
             title={title || 'Embedded content'}
             className='h-full w-full border-0'
             sandbox='allow-scripts allow-same-origin allow-popups allow-forms'
+            onLoad={postThemeToIframe}
           />
         </div>
       </PublicLayout>
@@ -73,11 +88,13 @@ export function EmbedPage() {
     <PublicLayout showMainContainer={false}>
       <div className='h-[calc(100svh-4rem)] pt-16'>
         <iframe
+          ref={iframeRef}
           src={content}
           title={title || 'Embedded content'}
           className='h-full w-full border-0'
           sandbox='allow-scripts allow-same-origin allow-popups allow-forms'
           referrerPolicy='no-referrer'
+          onLoad={postThemeToIframe}
         />
       </div>
     </PublicLayout>

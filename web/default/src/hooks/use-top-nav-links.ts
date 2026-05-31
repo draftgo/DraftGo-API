@@ -119,7 +119,7 @@ export function useTopNavLinks(): TopNavLink[] {
         })
         links.push({
           title: link.title,
-          href: `/embed?${embedParams.toString()}`,
+          href: `/embed/?${embedParams.toString()}`,
           external: false,
         })
       } else {
@@ -130,7 +130,7 @@ export function useTopNavLinks(): TopNavLink[] {
         })
         links.push({
           title: link.title,
-          href: `/embed?${embedParams.toString()}`,
+          href: `/embed/?${embedParams.toString()}`,
           external: false,
         })
       }
