@@ -44,6 +44,9 @@ export default function SettingsMonitoring(props) {
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_channel_minutes': 10,
+    'monitor_setting.recovery_mode': 'follow',
+    'monitor_setting.recovery_probe_minutes': 5,
+    'monitor_setting.recovery_threshold_seconds': 0,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -230,6 +233,66 @@ export default function SettingsMonitoring(props) {
                     setInputs({
                       ...inputs,
                       AutomaticEnableChannelEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('恢复模式')}
+                  field={'monitor_setting.recovery_mode'}
+                  extraText={t('禁用通道如何重新测试并恢复')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'monitor_setting.recovery_mode': value,
+                    })
+                  }
+                >
+                  <Form.Select.Option value='follow'>
+                    {t('跟随定时测试')}
+                  </Form.Select.Option>
+                  <Form.Select.Option value='independent'>
+                    {t('独立探测')}
+                  </Form.Select.Option>
+                </Form.Select>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('恢复探测间隔')}
+                  step={1}
+                  min={1}
+                  suffix={t('分钟')}
+                  extraText={t('独立探测模式下，每隔多少分钟测试禁用通道')}
+                  placeholder={''}
+                  field={'monitor_setting.recovery_probe_minutes'}
+                  disabled={
+                    inputs['monitor_setting.recovery_mode'] !== 'independent'
+                  }
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'monitor_setting.recovery_probe_minutes': parseInt(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('恢复阈值')}
+                  step={1}
+                  min={0}
+                  suffix={t('秒')}
+                  extraText={t('恢复测试需在此时间内完成，0 表示不限制')}
+                  placeholder={''}
+                  field={'monitor_setting.recovery_threshold_seconds'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'monitor_setting.recovery_threshold_seconds':
+                        parseInt(value),
                     })
                   }
                 />

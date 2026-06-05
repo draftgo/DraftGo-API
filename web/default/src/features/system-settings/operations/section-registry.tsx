@@ -49,7 +49,8 @@ const OPERATIONS_SECTIONS = [
         defaultValues={{
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
           ChannelDisableWindowMinutes: settings.ChannelDisableWindowMinutes,
-          ChannelDisableFailureThreshold: settings.ChannelDisableFailureThreshold,
+          ChannelDisableFailureThreshold:
+            settings.ChannelDisableFailureThreshold,
           QuotaRemindThreshold: settings.QuotaRemindThreshold,
           AutomaticDisableChannelEnabled:
             settings.AutomaticDisableChannelEnabled,
@@ -65,6 +66,8 @@ const OPERATIONS_SECTIONS = [
             settings['monitor_setting.recovery_mode'],
           'monitor_setting.recovery_probe_minutes':
             settings['monitor_setting.recovery_probe_minutes'],
+          'monitor_setting.recovery_threshold_seconds':
+            settings['monitor_setting.recovery_threshold_seconds'],
         }}
       />
     ),

@@ -74,6 +74,10 @@ const monitoringSchema = z
         .number()
         .int()
         .min(1, 'Interval must be at least 1 minute'),
+      recovery_threshold_seconds: z.coerce
+        .number()
+        .int()
+        .min(0, 'Threshold must be non-negative'),
     }),
   })
   .superRefine((values, ctx) => {
@@ -122,6 +126,7 @@ type MonitoringSettingsSectionProps = {
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.recovery_mode': string
     'monitor_setting.recovery_probe_minutes': number
+    'monitor_setting.recovery_threshold_seconds': number
   }
 }
 
@@ -143,6 +148,7 @@ type NormalizedMonitoringValues = {
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.recovery_mode': string
   'monitor_setting.recovery_probe_minutes': number
+  'monitor_setting.recovery_threshold_seconds': number
 }
 
 const buildFormDefaults = (
@@ -150,7 +156,8 @@ const buildFormDefaults = (
 ): MonitoringFormInput => ({
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
   ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
-  ChannelDisableFailureThreshold: defaults.ChannelDisableFailureThreshold ?? '3',
+  ChannelDisableFailureThreshold:
+    defaults.ChannelDisableFailureThreshold ?? '3',
   QuotaRemindThreshold: defaults.QuotaRemindThreshold ?? '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -165,9 +172,12 @@ const buildFormDefaults = (
     auto_test_channel_minutes:
       defaults['monitor_setting.auto_test_channel_minutes'],
     recovery_mode:
-      (defaults['monitor_setting.recovery_mode'] as 'follow' | 'independent') ?? 'follow',
+      (defaults['monitor_setting.recovery_mode'] as 'follow' | 'independent') ??
+      'follow',
     recovery_probe_minutes:
       defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+    recovery_threshold_seconds:
+      defaults['monitor_setting.recovery_threshold_seconds'] ?? 0,
   },
 })
 
@@ -175,8 +185,12 @@ const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
-  ChannelDisableWindowMinutes: (defaults.ChannelDisableWindowMinutes ?? '5').trim(),
-  ChannelDisableFailureThreshold: (defaults.ChannelDisableFailureThreshold ?? '3').trim(),
+  ChannelDisableWindowMinutes: (
+    defaults.ChannelDisableWindowMinutes ?? '5'
+  ).trim(),
+  ChannelDisableFailureThreshold: (
+    defaults.ChannelDisableFailureThreshold ?? '3'
+  ).trim(),
   QuotaRemindThreshold: (defaults.QuotaRemindThreshold ?? '').trim(),
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
@@ -197,6 +211,8 @@ const normalizeDefaults = (
     defaults['monitor_setting.recovery_mode'] ?? 'follow',
   'monitor_setting.recovery_probe_minutes':
     defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+  'monitor_setting.recovery_threshold_seconds':
+    defaults['monitor_setting.recovery_threshold_seconds'] ?? 0,
 })
 
 const normalizeFormValues = (
@@ -221,10 +237,11 @@ const normalizeFormValues = (
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
-  'monitor_setting.recovery_mode':
-    values.monitor_setting.recovery_mode,
+  'monitor_setting.recovery_mode': values.monitor_setting.recovery_mode,
   'monitor_setting.recovery_probe_minutes':
     values.monitor_setting.recovery_probe_minutes,
+  'monitor_setting.recovery_threshold_seconds':
+    values.monitor_setting.recovery_threshold_seconds,
 })
 
 export function MonitoringSettingsSection({
@@ -503,9 +520,7 @@ export function MonitoringSettingsSection({
                     </select>
                   </FormControl>
                   <FormDescription>
-                    {t(
-                      'How disabled channels are re-tested for recovery'
-                    )}
+                    {t('How disabled channels are re-tested for recovery')}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -517,13 +532,18 @@ export function MonitoringSettingsSection({
               name='monitor_setting.recovery_probe_minutes'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Recovery probe interval (minutes)')}</FormLabel>
+                  <FormLabel>
+                    {t('Recovery probe interval (minutes)')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type='number'
                       min={1}
                       step={1}
-                      disabled={form.watch('monitor_setting.recovery_mode') !== 'independent'}
+                      disabled={
+                        form.watch('monitor_setting.recovery_mode') !==
+                        'independent'
+                      }
                       value={
                         typeof field.value === 'number' &&
                         Number.isFinite(field.value)
@@ -539,8 +559,30 @@ export function MonitoringSettingsSection({
                     />
                   </FormControl>
                   <FormDescription>
+                    {t('How often disabled channels are probed for recovery')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='monitor_setting.recovery_threshold_seconds'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recovery threshold (seconds)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
                     {t(
-                      'How often disabled channels are probed for recovery'
+                      'Recovery checks must finish within this time; 0 disables the limit'
                     )}
                   </FormDescription>
                   <FormMessage />

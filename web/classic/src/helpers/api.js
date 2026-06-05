@@ -209,6 +209,14 @@ export const processModelsData = (data, currentModel) => {
   return { modelOptions, selectedModel };
 };
 
+export const sortAutoGroupFirst = (groupOptions) => {
+  return [...groupOptions].sort((a, b) => {
+    if (a.value === 'auto' && b.value !== 'auto') return -1;
+    if (a.value !== 'auto' && b.value === 'auto') return 1;
+    return 0;
+  });
+};
+
 // 处理分组数据
 export const processGroupsData = (data, userGroup) => {
   let groupOptions = Object.entries(data).map(([group, info]) => ({
@@ -227,11 +235,16 @@ export const processGroupsData = (data, userGroup) => {
         ratio: 1,
       },
     ];
-  } else if (userGroup) {
+  } else {
+    groupOptions = sortAutoGroupFirst(groupOptions);
+  }
+
+  if (groupOptions.length > 0 && userGroup && userGroup !== 'auto') {
     const userGroupIndex = groupOptions.findIndex((g) => g.value === userGroup);
     if (userGroupIndex > -1) {
       const userGroupOption = groupOptions.splice(userGroupIndex, 1)[0];
-      groupOptions.unshift(userGroupOption);
+      const insertIndex = groupOptions[0]?.value === 'auto' ? 1 : 0;
+      groupOptions.splice(insertIndex, 0, userGroupOption);
     }
   }
 

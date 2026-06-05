@@ -697,6 +697,21 @@ func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
 	return channel != nil && channel.Type == constant.ChannelTypeCodex
 }
 
+func shouldEnableChannelAfterRecoveryProbe(newAPIError *types.NewAPIError, status int, milliseconds int64) bool {
+	if !service.ShouldEnableChannel(newAPIError, status) {
+		return false
+	}
+	return isWithinRecoveryThreshold(milliseconds)
+}
+
+func isWithinRecoveryThreshold(milliseconds int64) bool {
+	thresholdSeconds := operation_setting.GetMonitorSetting().RecoveryThresholdSeconds
+	if thresholdSeconds <= 0 {
+		return true
+	}
+	return float64(milliseconds)/1000.0 <= thresholdSeconds
+}
+
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	if len(jsonBytes) == 0 {
 		return ""
@@ -983,7 +998,7 @@ func testAllChannels(notify bool) error {
 			}
 
 			// 当错误检查通过，才检查响应时间
-			if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
+			if common.AutomaticDisableChannelEnabled && isChannelEnabled && !shouldBanChannel {
 				if milliseconds > disableThreshold {
 					err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
 					newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
@@ -997,7 +1012,7 @@ func testAllChannels(notify bool) error {
 			}
 
 			// enable channel
-			if !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
+			if !isChannelEnabled && shouldEnableChannelAfterRecoveryProbe(newAPIError, channel.Status, milliseconds) {
 				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			}
 
@@ -1101,8 +1116,10 @@ func probeDisabledChannels() {
 		if channel.ChannelInfo.IsMultiKey {
 			probeMultiKeyRecovery(channel, probeUserID)
 		} else {
+			tik := time.Now()
 			result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
-			if result.newAPIError == nil && service.ShouldEnableChannel(nil, channel.Status) {
+			milliseconds := time.Since(tik).Milliseconds()
+			if shouldEnableChannelAfterRecoveryProbe(result.newAPIError, channel.Status, milliseconds) {
 				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			}
 		}
@@ -1140,10 +1157,12 @@ func probeMultiKeyRecovery(channel *model.Channel, probeUserID int) {
 			continue
 		}
 		idx := keyIndex
+		tik := time.Now()
 		result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout, channelTestOptions{
 			forcedMultiKeyIndex: &idx,
 		})
-		if result.newAPIError == nil && common.AutomaticEnableChannelEnabled {
+		milliseconds := time.Since(tik).Milliseconds()
+		if shouldEnableChannelAfterRecoveryProbe(result.newAPIError, common.ChannelStatusAutoDisabled, milliseconds) {
 			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 		}
 		time.Sleep(common.RequestInterval)

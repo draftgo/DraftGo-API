@@ -8,18 +8,20 @@ import (
 )
 
 type MonitorSetting struct {
-	AutoTestChannelEnabled bool    `json:"auto_test_channel_enabled"`
-	AutoTestChannelMinutes float64 `json:"auto_test_channel_minutes"`
-	RecoveryMode           string  `json:"recovery_mode"`
-	RecoveryProbeMinutes   float64 `json:"recovery_probe_minutes"`
+	AutoTestChannelEnabled   bool    `json:"auto_test_channel_enabled"`
+	AutoTestChannelMinutes   float64 `json:"auto_test_channel_minutes"`
+	RecoveryMode             string  `json:"recovery_mode"`
+	RecoveryProbeMinutes     float64 `json:"recovery_probe_minutes"`
+	RecoveryThresholdSeconds float64 `json:"recovery_threshold_seconds"`
 }
 
 // 默认配置
 var monitorSetting = MonitorSetting{
-	AutoTestChannelEnabled: false,
-	AutoTestChannelMinutes: 10,
-	RecoveryMode:           "follow",
-	RecoveryProbeMinutes:   5,
+	AutoTestChannelEnabled:   false,
+	AutoTestChannelMinutes:   10,
+	RecoveryMode:             "follow",
+	RecoveryProbeMinutes:     5,
+	RecoveryThresholdSeconds: 0,
 }
 
 func init() {
