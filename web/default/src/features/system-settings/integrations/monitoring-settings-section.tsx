@@ -177,7 +177,7 @@ const buildFormDefaults = (
     recovery_probe_minutes:
       defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
     recovery_threshold_seconds:
-      defaults['monitor_setting.recovery_threshold_seconds'] ?? 0,
+      defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
   },
 })
 
@@ -212,7 +212,7 @@ const normalizeDefaults = (
   'monitor_setting.recovery_probe_minutes':
     defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
   'monitor_setting.recovery_threshold_seconds':
-    defaults['monitor_setting.recovery_threshold_seconds'] ?? 0,
+    defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
 })
 
 const normalizeFormValues = (

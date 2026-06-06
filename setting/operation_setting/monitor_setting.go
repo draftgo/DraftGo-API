@@ -21,7 +21,7 @@ var monitorSetting = MonitorSetting{
 	AutoTestChannelMinutes:   10,
 	RecoveryMode:             "follow",
 	RecoveryProbeMinutes:     5,
-	RecoveryThresholdSeconds: 0,
+	RecoveryThresholdSeconds: 15,
 }
 
 func init() {

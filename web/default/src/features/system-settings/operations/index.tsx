@@ -44,7 +44,7 @@ const defaultOperationsSettings: OperationsSettings = {
   'monitor_setting.auto_test_channel_minutes': 10,
   'monitor_setting.recovery_mode': 'follow',
   'monitor_setting.recovery_probe_minutes': 5,
-  'monitor_setting.recovery_threshold_seconds': 0,
+  'monitor_setting.recovery_threshold_seconds': 15,
   SMTPServer: '',
   SMTPPort: '',
   SMTPAccount: '',

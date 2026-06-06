@@ -77,7 +77,7 @@ const OperationSetting = () => {
     'monitor_setting.auto_test_channel_minutes': 10 /* 签到设置 */,
     'monitor_setting.recovery_mode': 'follow',
     'monitor_setting.recovery_probe_minutes': 5,
-    'monitor_setting.recovery_threshold_seconds': 0,
+    'monitor_setting.recovery_threshold_seconds': 15,
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
