@@ -16,15 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import {
-  loadConfig,
-  saveConfig,
-  loadParameterEnabled,
-  saveParameterEnabled,
-  loadMessages,
-  saveMessages,
+  createPlaygroundSession,
+  createQuickPrompt,
+  getPlaygroundSessionTitle,
+  loadActiveSessionId,
+  loadQuickPrompts,
+  loadSessionListCollapsed,
+  loadSessions,
+  saveActiveSessionId,
+  saveQuickPrompts,
+  saveSessionListCollapsed,
+  saveSessions,
 } from '../lib'
 import type {
   Message,
@@ -32,99 +37,212 @@ import type {
   ParameterEnabled,
   ModelOption,
   GroupOption,
+  PlaygroundSession,
+  QuickPrompt,
 } from '../types'
 
+function getInitialState() {
+  const sessions = loadSessions()
+  const savedActiveSessionId = loadActiveSessionId()
+  const activeSessionId =
+    sessions.find((session) => session.id === savedActiveSessionId)?.id ??
+    sessions[0].id
+
+  saveSessions(sessions)
+  saveActiveSessionId(activeSessionId)
+
+  return {
+    sessions,
+    activeSessionId,
+    quickPrompts: loadQuickPrompts(),
+    sessionListCollapsed: loadSessionListCollapsed(),
+  }
+}
+
 /**
- * Main state management hook for playground
+ * Main state management hook for playground.
  */
 export function usePlaygroundState() {
-  // Load initial state from localStorage
-  const [config, setConfig] = useState<PlaygroundConfig>(() => {
-    const savedConfig = loadConfig()
-    return { ...DEFAULT_CONFIG, ...savedConfig }
-  })
-
-  const [parameterEnabled, setParameterEnabled] = useState<ParameterEnabled>(
-    () => {
-      const saved = loadParameterEnabled()
-      return { ...DEFAULT_PARAMETER_ENABLED, ...saved }
-    }
+  const [initialState] = useState(getInitialState)
+  const [sessions, setSessions] = useState<PlaygroundSession[]>(
+    initialState.sessions
   )
-
-  const [messages, setMessages] = useState<Message[]>(() => {
-    return loadMessages() || []
-  })
-
+  const [activeSessionId, setActiveSessionId] = useState(
+    initialState.activeSessionId
+  )
+  const [quickPrompts, setQuickPrompts] = useState<QuickPrompt[]>(
+    initialState.quickPrompts
+  )
+  const [sessionListCollapsed, setSessionListCollapsed] = useState(
+    initialState.sessionListCollapsed
+  )
   const [models, setModels] = useState<ModelOption[]>([])
   const [groups, setGroups] = useState<GroupOption[]>([])
 
-  // Update config with automatic save
+  const activeSession = useMemo(
+    () =>
+      sessions.find((session) => session.id === activeSessionId) ??
+      sessions[0] ??
+      createPlaygroundSession(),
+    [sessions, activeSessionId]
+  )
+
+  const persistSessions = useCallback((nextSessions: PlaygroundSession[]) => {
+    saveSessions(nextSessions)
+    return nextSessions
+  }, [])
+
+  const updateActiveSession = useCallback(
+    (updater: (session: PlaygroundSession) => PlaygroundSession) => {
+      setSessions((prev) =>
+        persistSessions(
+          prev.map((session) =>
+            session.id === activeSessionId ? updater(session) : session
+          )
+        )
+      )
+    },
+    [activeSessionId, persistSessions]
+  )
+
+  const selectSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId)
+    saveActiveSessionId(sessionId)
+  }, [])
+
+  const createSession = useCallback(() => {
+    const session = createPlaygroundSession({
+      config: activeSession?.config,
+      parameterEnabled: activeSession?.parameterEnabled,
+    })
+    setSessions((prev) => persistSessions([session, ...prev]))
+    setActiveSessionId(session.id)
+    saveActiveSessionId(session.id)
+  }, [activeSession?.config, activeSession?.parameterEnabled, persistSessions])
+
+  const deleteSession = useCallback(
+    (sessionId: string) => {
+      setSessions((prev) => {
+        if (prev.length <= 1) {
+          const replacement = createPlaygroundSession()
+          setActiveSessionId(replacement.id)
+          saveActiveSessionId(replacement.id)
+          return persistSessions([replacement])
+        }
+
+        const index = prev.findIndex((session) => session.id === sessionId)
+        const next = prev.filter((session) => session.id !== sessionId)
+
+        if (sessionId === activeSessionId) {
+          const fallback = next[Math.max(0, index - 1)] ?? next[0]
+          setActiveSessionId(fallback.id)
+          saveActiveSessionId(fallback.id)
+        }
+
+        return persistSessions(next)
+      })
+    },
+    [activeSessionId, persistSessions]
+  )
+
   const updateConfig = useCallback(
     <K extends keyof PlaygroundConfig>(key: K, value: PlaygroundConfig[K]) => {
-      setConfig((prev) => {
-        const updated = { ...prev, [key]: value }
-        saveConfig(updated)
-        return updated
-      })
+      updateActiveSession((session) => ({
+        ...session,
+        updatedAt: Date.now(),
+        config: { ...session.config, [key]: value },
+      }))
     },
-    []
+    [updateActiveSession]
   )
 
-  // Update parameter enabled with automatic save
   const updateParameterEnabled = useCallback(
     (key: keyof ParameterEnabled, value: boolean) => {
-      setParameterEnabled((prev) => {
-        const updated = { ...prev, [key]: value }
-        saveParameterEnabled(updated)
-        return updated
-      })
+      updateActiveSession((session) => ({
+        ...session,
+        updatedAt: Date.now(),
+        parameterEnabled: { ...session.parameterEnabled, [key]: value },
+      }))
     },
-    []
+    [updateActiveSession]
   )
 
-  // Update messages with automatic save
   const updateMessages = useCallback(
     (updater: Message[] | ((prev: Message[]) => Message[])) => {
-      setMessages((prev) => {
+      updateActiveSession((session) => {
         const newMessages =
-          typeof updater === 'function' ? updater(prev) : updater
-        saveMessages(newMessages)
-        return newMessages
+          typeof updater === 'function' ? updater(session.messages) : updater
+        return {
+          ...session,
+          title: getPlaygroundSessionTitle(newMessages),
+          updatedAt: Date.now(),
+          messages: newMessages,
+        }
       })
     },
-    []
+    [updateActiveSession]
   )
 
-  // Clear all messages
   const clearMessages = useCallback(() => {
     updateMessages([])
   }, [updateMessages])
 
-  // Reset config to defaults
   const resetConfig = useCallback(() => {
-    setConfig(DEFAULT_CONFIG)
-    setParameterEnabled(DEFAULT_PARAMETER_ENABLED)
-    saveConfig(DEFAULT_CONFIG)
-    saveParameterEnabled(DEFAULT_PARAMETER_ENABLED)
+    updateActiveSession((session) => ({
+      ...session,
+      updatedAt: Date.now(),
+      config: DEFAULT_CONFIG,
+      parameterEnabled: DEFAULT_PARAMETER_ENABLED,
+    }))
+  }, [updateActiveSession])
+
+  const updateQuickPrompts = useCallback(
+    (updater: QuickPrompt[] | ((prev: QuickPrompt[]) => QuickPrompt[])) => {
+      setQuickPrompts((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater
+        saveQuickPrompts(next)
+        return next
+      })
+    },
+    []
+  )
+
+  const addQuickPrompt = useCallback(() => {
+    const prompt = createQuickPrompt()
+    updateQuickPrompts((prev) => [...prev, prompt])
+    return prompt
+  }, [updateQuickPrompts])
+
+  const toggleSessionList = useCallback(() => {
+    setSessionListCollapsed((prev) => {
+      const next = !prev
+      saveSessionListCollapsed(next)
+      return next
+    })
   }, [])
 
   return {
-    // State
-    config,
-    parameterEnabled,
-    messages,
+    activeSessionId,
+    config: activeSession.config,
+    parameterEnabled: activeSession.parameterEnabled,
+    messages: activeSession.messages,
+    sessions,
+    sessionListCollapsed,
+    quickPrompts,
     models,
     groups,
-
-    // Setters
     setModels,
     setGroups,
-
-    // Actions
+    selectSession,
+    createSession,
+    deleteSession,
     updateConfig,
     updateParameterEnabled,
     updateMessages,
     clearMessages,
     resetConfig,
+    updateQuickPrompts,
+    addQuickPrompt,
+    toggleSessionList,
   }
 }

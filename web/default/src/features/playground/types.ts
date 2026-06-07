@@ -128,6 +128,22 @@ export interface ParameterEnabled {
   seed: boolean
 }
 
+export interface PlaygroundSession {
+  id: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  config: PlaygroundConfig
+  parameterEnabled: ParameterEnabled
+  messages: Message[]
+}
+
+export interface QuickPrompt {
+  id: string
+  name: string
+  prompt: string
+}
+
 // Model and group options
 export interface ModelOption {
   label: string

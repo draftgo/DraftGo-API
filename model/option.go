@@ -54,6 +54,7 @@ func InitOptionMap() {
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
+	common.OptionMap["ChannelSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelDisableWindowMinutes"] = strconv.Itoa(common.ChannelDisableWindowMinutes)
 	common.OptionMap["ChannelDisableFailureThreshold"] = strconv.Itoa(common.ChannelDisableFailureThreshold)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -563,6 +564,8 @@ func updateOptionMap(key string, value string) (err error) {
 	//	common.ChatLink2 = value
 	case "ChannelDisableThreshold":
 		common.ChannelDisableThreshold, _ = strconv.ParseFloat(value, 64)
+	case "ChannelSlowRequestThreshold":
+		common.ChannelSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelDisableWindowMinutes":
 		common.ChannelDisableWindowMinutes, _ = strconv.Atoi(value)
 	case "ChannelDisableFailureThreshold":

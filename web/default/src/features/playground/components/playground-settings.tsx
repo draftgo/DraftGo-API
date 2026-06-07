@@ -16,14 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SettingsIcon, RotateCcwIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
-import { Switch } from '@/components/ui/switch'
 import {
   Sheet,
   SheetContent,
@@ -31,6 +29,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
+import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import type { PlaygroundConfig, ParameterEnabled } from '../types'
 
 interface ParameterSliderProps {
@@ -58,6 +58,10 @@ function ParameterSlider({
 }: ParameterSliderProps) {
   const [inputValue, setInputValue] = useState(String(value))
 
+  useEffect(() => {
+    setInputValue(String(value))
+  }, [value])
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value
     setInputValue(raw)
@@ -83,14 +87,14 @@ function ParameterSlider({
     }
   }
 
-  const handleSliderChange = (val: number | number[]) => {
+  const handleSliderChange = (val: number | readonly number[]) => {
     const num = Array.isArray(val) ? val[0] : val
     onValueChange(num)
     setInputValue(String(num))
   }
 
   return (
-    <div className='space-y-2.5'>
+    <div className='bg-background rounded-md border px-3 py-3'>
       <div className='flex items-center justify-between'>
         <div className='flex items-center gap-2'>
           <Switch
@@ -100,7 +104,7 @@ function ParameterSlider({
           />
           <Label
             htmlFor={`param-${paramKey}`}
-            className={!enabled ? 'text-muted-foreground' : ''}
+            className={!enabled ? 'text-muted-foreground text-sm' : 'text-sm'}
           >
             {label}
           </Label>
@@ -117,14 +121,16 @@ function ParameterSlider({
           step={step}
         />
       </div>
-      <Slider
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={handleSliderChange}
-        disabled={!enabled}
-      />
+      <div className='pt-3'>
+        <Slider
+          value={[value]}
+          min={min}
+          max={max}
+          step={step}
+          onValueChange={handleSliderChange}
+          disabled={!enabled}
+        />
+      </div>
     </div>
   )
 }
@@ -136,7 +142,10 @@ interface PlaygroundSettingsProps {
     key: K,
     value: PlaygroundConfig[K]
   ) => void
-  onParameterEnabledChange: (key: keyof ParameterEnabled, value: boolean) => void
+  onParameterEnabledChange: (
+    key: keyof ParameterEnabled,
+    value: boolean
+  ) => void
   onReset: () => void
 }
 
@@ -157,12 +166,54 @@ export function PlaygroundSettings({
     step: number
     configKey: keyof PlaygroundConfig
   }> = [
-    { key: 'temperature', label: t('Temperature'), min: 0, max: 2, step: 0.1, configKey: 'temperature' },
-    { key: 'top_p', label: t('Top P'), min: 0, max: 1, step: 0.05, configKey: 'top_p' },
-    { key: 'max_tokens', label: t('Max Tokens'), min: 1, max: 128000, step: 1, configKey: 'max_tokens' },
-    { key: 'frequency_penalty', label: t('Frequency Penalty'), min: -2, max: 2, step: 0.1, configKey: 'frequency_penalty' },
-    { key: 'presence_penalty', label: t('Presence Penalty'), min: -2, max: 2, step: 0.1, configKey: 'presence_penalty' },
-    { key: 'seed', label: t('Seed'), min: 0, max: 999999, step: 1, configKey: 'seed' },
+    {
+      key: 'temperature',
+      label: t('Temperature'),
+      min: 0,
+      max: 2,
+      step: 0.1,
+      configKey: 'temperature',
+    },
+    {
+      key: 'top_p',
+      label: t('Top P'),
+      min: 0,
+      max: 1,
+      step: 0.05,
+      configKey: 'top_p',
+    },
+    {
+      key: 'max_tokens',
+      label: t('Max Tokens'),
+      min: 1,
+      max: 128000,
+      step: 1,
+      configKey: 'max_tokens',
+    },
+    {
+      key: 'frequency_penalty',
+      label: t('Frequency Penalty'),
+      min: -2,
+      max: 2,
+      step: 0.1,
+      configKey: 'frequency_penalty',
+    },
+    {
+      key: 'presence_penalty',
+      label: t('Presence Penalty'),
+      min: -2,
+      max: 2,
+      step: 0.1,
+      configKey: 'presence_penalty',
+    },
+    {
+      key: 'seed',
+      label: t('Seed'),
+      min: 0,
+      max: 999999,
+      step: 1,
+      configKey: 'seed',
+    },
   ]
 
   return (
@@ -175,21 +226,30 @@ export function PlaygroundSettings({
           </Button>
         }
       />
-      <SheetContent side='right' className='w-80 overflow-y-auto sm:w-96'>
-        <SheetHeader>
+      <SheetContent
+        side='right'
+        className='w-[92vw] overflow-y-auto sm:max-w-xl'
+      >
+        <SheetHeader className='border-b px-5 py-4'>
           <SheetTitle>{t('Advanced Settings')}</SheetTitle>
         </SheetHeader>
 
-        <div className='space-y-6 px-1 pt-4'>
-          <div className='flex items-center justify-between'>
-            <Label className='text-sm font-medium'>{t('Stream')}</Label>
+        <div className='space-y-5 px-5 pb-6'>
+          <div className='bg-background flex items-center justify-between gap-4 rounded-md border px-3 py-3'>
+            <div className='min-w-0'>
+              <Label className='text-sm font-medium'>{t('Stream')}</Label>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                {t('Return assistant output as a stream')}
+              </p>
+            </div>
             <Switch
+              className='shrink-0'
               checked={config.stream}
               onCheckedChange={(checked) => onConfigChange('stream', checked)}
             />
           </div>
 
-          <div className='border-t pt-4'>
+          <div>
             <div className='mb-4 flex items-center justify-between'>
               <span className='text-sm font-medium'>{t('Parameters')}</span>
               <Button
@@ -203,7 +263,7 @@ export function PlaygroundSettings({
               </Button>
             </div>
 
-            <div className='space-y-5'>
+            <div className='space-y-3'>
               {parameters.map((param) => (
                 <ParameterSlider
                   key={param.key}
@@ -214,8 +274,15 @@ export function PlaygroundSettings({
                   min={param.min}
                   max={param.max}
                   step={param.step}
-                  onValueChange={(value) => onConfigChange(param.configKey, value as PlaygroundConfig[typeof param.configKey])}
-                  onEnabledChange={(enabled) => onParameterEnabledChange(param.key, enabled)}
+                  onValueChange={(value) =>
+                    onConfigChange(
+                      param.configKey,
+                      value as PlaygroundConfig[typeof param.configKey]
+                    )
+                  }
+                  onEnabledChange={(enabled) =>
+                    onParameterEnabledChange(param.key, enabled)
+                  }
                 />
               ))}
             </div>

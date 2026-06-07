@@ -1,7 +1,9 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -319,6 +323,84 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 	return "openai"
 }
 
+func isTextSlowRequestEligible(relayInfo *relaycommon.RelayInfo) bool {
+	if relayInfo == nil || relayInfo.IsChannelTest {
+		return false
+	}
+	if model_setting.IsGeminiModelSupportImagine(relayInfo.OriginModelName) {
+		return false
+	}
+	if relayInfo.ChannelMeta != nil && model_setting.IsGeminiModelSupportImagine(relayInfo.UpstreamModelName) {
+		return false
+	}
+	switch relayInfo.RelayMode {
+	case relayconstant.RelayModeChatCompletions,
+		relayconstant.RelayModeCompletions,
+		relayconstant.RelayModeResponses,
+		relayconstant.RelayModeGemini:
+		return true
+	}
+	return relayInfo.RelayMode == relayconstant.RelayModeUnknown &&
+		relayInfo.GetFinalRequestRelayFormat() == types.RelayFormatClaude
+}
+
+func textSlowRequestDuration(relayInfo *relaycommon.RelayInfo, now time.Time) (time.Duration, string, bool) {
+	if relayInfo == nil {
+		return 0, "", false
+	}
+	if relayInfo.IsStream {
+		if !relayInfo.HasSendResponse() {
+			return 0, "", false
+		}
+		return relayInfo.FirstResponseTime.Sub(relayInfo.StartTime), "首字时间", true
+	}
+	return now.Sub(relayInfo.StartTime), "总耗时", true
+}
+
+func recordSlowTextRequestIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) {
+	thresholdSeconds := common.ChannelSlowRequestThreshold
+	if !common.AutomaticDisableChannelEnabled || thresholdSeconds <= 0 {
+		return
+	}
+	if ctx != nil && ctx.GetBool("image_generation_call") {
+		return
+	}
+	if !isTextSlowRequestEligible(relayInfo) {
+		return
+	}
+	if ctx == nil || relayInfo == nil || relayInfo.ChannelMeta == nil || relayInfo.ChannelId == 0 {
+		return
+	}
+
+	duration, metricName, ok := textSlowRequestDuration(relayInfo, time.Now())
+	if !ok || duration.Seconds() <= thresholdSeconds {
+		return
+	}
+
+	channelName := common.GetContextKeyString(ctx, constant.ContextKeyChannelName)
+	if channelName == "" {
+		channelName = fmt.Sprintf("#%d", relayInfo.ChannelId)
+	}
+	channelError := types.NewChannelError(
+		relayInfo.ChannelId,
+		relayInfo.ChannelType,
+		channelName,
+		relayInfo.ChannelIsMultiKey,
+		relayInfo.ApiKey,
+		common.GetContextKeyBool(ctx, constant.ContextKeyChannelAutoBan),
+	)
+	if !channelError.AutoBan {
+		return
+	}
+	reason := fmt.Sprintf("文本请求%s %.2fs 超过阈值 %.2fs", metricName, duration.Seconds(), thresholdSeconds)
+	err := types.NewOpenAIError(errors.New(reason), types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
+	if RecordFailure(channelError.ChannelId, channelError.UsingKey) {
+		gopool.Go(func() {
+			DisableChannel(*channelError, err.ErrorWithStatusCode())
+		})
+	}
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
 	originUsage := usage
 	if usage == nil {
@@ -473,6 +555,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+	recordSlowTextRequestIfNeeded(ctx, relayInfo)
 	gopool.Go(func() {
 		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 	})

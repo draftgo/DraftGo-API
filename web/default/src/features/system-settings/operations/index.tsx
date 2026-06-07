@@ -31,6 +31,7 @@ const defaultOperationsSettings: OperationsSettings = {
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
   ChannelDisableThreshold: '',
+  ChannelSlowRequestThreshold: '',
   ChannelDisableWindowMinutes: '5',
   ChannelDisableFailureThreshold: '3',
   QuotaRemindThreshold: '',

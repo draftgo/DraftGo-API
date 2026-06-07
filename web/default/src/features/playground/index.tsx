@@ -25,6 +25,7 @@ import { PlaygroundChat } from './components/playground-chat'
 import { PlaygroundDataBrowser } from './components/playground-data-browser'
 import { PlaygroundInput } from './components/playground-input'
 import { PlaygroundJsonViewer } from './components/playground-json-viewer'
+import { PlaygroundSessionList } from './components/playground-session-list'
 import { PlaygroundSettings } from './components/playground-settings'
 import { usePlaygroundState, useChatHandler } from './hooks'
 import { createUserMessage, createLoadingAssistantMessage } from './lib'
@@ -36,6 +37,10 @@ export function Playground() {
     config,
     parameterEnabled,
     messages,
+    sessions,
+    activeSessionId,
+    sessionListCollapsed,
+    quickPrompts,
     models,
     groups,
     updateMessages,
@@ -45,6 +50,11 @@ export function Playground() {
     updateParameterEnabled,
     clearMessages,
     resetConfig,
+    selectSession,
+    createSession,
+    deleteSession,
+    updateQuickPrompts,
+    toggleSessionList,
   } = usePlaygroundState()
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
@@ -195,59 +205,71 @@ export function Playground() {
   }
 
   return (
-    <div className='relative flex size-full flex-col overflow-hidden'>
-      {/* Full-width scroll container: scrolling works even over side whitespace */}
-      <div className='flex flex-1 flex-col overflow-hidden'>
-        <PlaygroundChat
-          messages={messages}
-          onCopyMessage={handleCopyMessage}
-          onRegenerateMessage={handleRegenerateMessage}
-          onEditMessage={handleEditMessage}
-          onDeleteMessage={handleDeleteMessage}
-          isGenerating={isGenerating}
-          editingKey={editingMessageKey}
-          onCancelEdit={handleEditOpenChange}
-          onSaveEdit={(newContent) => applyEdit(newContent, false)}
-          onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
-        />
-      </div>
+    <div className='relative flex size-full overflow-hidden'>
+      <PlaygroundSessionList
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        collapsed={sessionListCollapsed}
+        onToggleCollapsed={toggleSessionList}
+        onCreateSession={createSession}
+        onSelectSession={selectSession}
+        onDeleteSession={deleteSession}
+      />
 
-      {/* Input area: center content and constrain to the same container width */}
-      <div className='mx-auto w-full max-w-4xl'>
-        {/* Toolbar */}
-        <div className='flex items-center justify-end gap-1.5 px-1 pb-2'>
-          <PlaygroundJsonViewer
+      <div className='flex min-w-0 flex-1 flex-col overflow-hidden'>
+        <div className='flex flex-1 flex-col overflow-hidden'>
+          <PlaygroundChat
             messages={messages}
-            config={config}
-            parameterEnabled={parameterEnabled}
-          />
-          <PlaygroundDataBrowser
-            messages={messages}
-            onClearMessages={clearMessages}
-            onImportMessages={(imported) => updateMessages(imported)}
-          />
-          <PlaygroundSettings
-            config={config}
-            parameterEnabled={parameterEnabled}
-            onConfigChange={updateConfig}
-            onParameterEnabledChange={updateParameterEnabled}
-            onReset={resetConfig}
+            onCopyMessage={handleCopyMessage}
+            onRegenerateMessage={handleRegenerateMessage}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
+            isGenerating={isGenerating}
+            editingKey={editingMessageKey}
+            onCancelEdit={handleEditOpenChange}
+            onSaveEdit={(newContent) => applyEdit(newContent, false)}
+            onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
           />
         </div>
 
-        <PlaygroundInput
-          disabled={isGenerating}
-          groups={groups}
-          groupValue={config.group}
-          isGenerating={isGenerating}
-          isModelLoading={isLoadingModels}
-          modelValue={config.model}
-          models={models}
-          onGroupChange={(value) => updateConfig('group', value)}
-          onModelChange={(value) => updateConfig('model', value)}
-          onStop={stopGeneration}
-          onSubmit={handleSendMessage}
-        />
+        <div className='mx-auto w-full max-w-4xl'>
+          <div className='flex items-center justify-end gap-1.5 px-3 pb-2 md:px-1'>
+            <PlaygroundJsonViewer
+              messages={messages}
+              config={config}
+              parameterEnabled={parameterEnabled}
+            />
+            <PlaygroundDataBrowser
+              messages={messages}
+              onClearMessages={clearMessages}
+              onImportMessages={(imported) => updateMessages(imported)}
+            />
+            <PlaygroundSettings
+              config={config}
+              parameterEnabled={parameterEnabled}
+              onConfigChange={updateConfig}
+              onParameterEnabledChange={updateParameterEnabled}
+              onReset={resetConfig}
+            />
+          </div>
+
+          <PlaygroundInput
+            disabled={isGenerating}
+            groups={groups}
+            groupValue={config.group}
+            isGenerating={isGenerating}
+            isModelLoading={isLoadingModels}
+            modelValue={config.model}
+            models={models}
+            quickPrompts={quickPrompts}
+            onCreateSession={createSession}
+            onGroupChange={(value) => updateConfig('group', value)}
+            onModelChange={(value) => updateConfig('model', value)}
+            onQuickPromptsChange={updateQuickPrompts}
+            onStop={stopGeneration}
+            onSubmit={handleSendMessage}
+          />
+        </div>
       </div>
     </div>
   )

@@ -35,6 +35,7 @@ export default function SettingsMonitoring(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
+    ChannelSlowRequestThreshold: '',
     QuotaRemindThreshold: '',
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,
@@ -201,6 +202,25 @@ export default function SettingsMonitoring(props) {
                     setInputs({
                       ...inputs,
                       QuotaRemindThreshold: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('文本慢请求阈值')}
+                  step={1}
+                  min={0}
+                  suffix={t('秒')}
+                  extraText={t(
+                    '仅统计文本请求；流式按首字时间，非流式按总耗时，0 表示关闭',
+                  )}
+                  placeholder={''}
+                  field={'ChannelSlowRequestThreshold'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      ChannelSlowRequestThreshold: String(value),
                     })
                   }
                 />

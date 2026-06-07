@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -169,6 +170,162 @@ func TestCacheWriteTokensTotal(t *testing.T) {
 			CacheCreationTokens1h: 20,
 		}
 		require.Equal(t, 30, cacheWriteTokensTotal(summary))
+	})
+}
+
+func TestIsTextSlowRequestEligible(t *testing.T) {
+	tests := []struct {
+		name      string
+		relayInfo *relaycommon.RelayInfo
+		want      bool
+	}{
+		{
+			name: "chat completions",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeChatCompletions,
+			},
+			want: true,
+		},
+		{
+			name: "completions",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeCompletions,
+			},
+			want: true,
+		},
+		{
+			name: "responses",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeResponses,
+			},
+			want: true,
+		},
+		{
+			name: "gemini",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode:       relayconstant.RelayModeGemini,
+				OriginModelName: "gemini-2.5-flash",
+			},
+			want: true,
+		},
+		{
+			name: "gemini image model is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode:       relayconstant.RelayModeGemini,
+				OriginModelName: "gemini-2.5-flash-image",
+			},
+			want: false,
+		},
+		{
+			name: "chat mapped to gemini image model is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeChatCompletions,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					UpstreamModelName: "gemini-2.5-flash-image",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "native claude messages",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode:               relayconstant.RelayModeUnknown,
+				FinalRequestRelayFormat: types.RelayFormatClaude,
+			},
+			want: true,
+		},
+		{
+			name: "channel test is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode:       relayconstant.RelayModeChatCompletions,
+				IsChannelTest:   true,
+				RelayFormat:     types.RelayFormatOpenAI,
+				OriginModelName: "gpt-4o-mini",
+			},
+			want: false,
+		},
+		{
+			name: "embeddings are skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeEmbeddings,
+			},
+			want: false,
+		},
+		{
+			name: "rerank is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeRerank,
+			},
+			want: false,
+		},
+		{
+			name: "image generation is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeImagesGenerations,
+			},
+			want: false,
+		},
+		{
+			name: "non-text mode is skipped even if final format is claude",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode:               relayconstant.RelayModeImagesGenerations,
+				FinalRequestRelayFormat: types.RelayFormatClaude,
+			},
+			want: false,
+		},
+		{
+			name: "responses compact is skipped",
+			relayInfo: &relaycommon.RelayInfo{
+				RelayMode: relayconstant.RelayModeResponsesCompact,
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isTextSlowRequestEligible(tt.relayInfo))
+		})
+	}
+}
+
+func TestTextSlowRequestDuration(t *testing.T) {
+	start := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	now := start.Add(12 * time.Second)
+
+	t.Run("stream uses first response time", func(t *testing.T) {
+		duration, metricName, ok := textSlowRequestDuration(&relaycommon.RelayInfo{
+			StartTime:         start,
+			FirstResponseTime: start.Add(3 * time.Second),
+			IsStream:          true,
+		}, now)
+
+		require.True(t, ok)
+		require.Equal(t, "首字时间", metricName)
+		require.Equal(t, 3*time.Second, duration)
+	})
+
+	t.Run("stream without first response is ignored", func(t *testing.T) {
+		duration, metricName, ok := textSlowRequestDuration(&relaycommon.RelayInfo{
+			StartTime:         start,
+			FirstResponseTime: start.Add(-1 * time.Second),
+			IsStream:          true,
+		}, now)
+
+		require.False(t, ok)
+		require.Empty(t, metricName)
+		require.Zero(t, duration)
+	})
+
+	t.Run("non-stream uses total duration", func(t *testing.T) {
+		duration, metricName, ok := textSlowRequestDuration(&relaycommon.RelayInfo{
+			StartTime: start,
+			IsStream:  false,
+		}, now)
+
+		require.True(t, ok)
+		require.Equal(t, "总耗时", metricName)
+		require.Equal(t, 12*time.Second, duration)
 	})
 }
 

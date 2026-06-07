@@ -26,20 +26,29 @@ import {
   GlobeIcon,
   SendIcon,
   SquareIcon,
-  BarChartIcon,
-  BoxIcon,
-  NotepadTextIcon,
-  CodeSquareIcon,
-  GraduationCapIcon,
+  PlusIcon,
+  Settings2Icon,
+  Trash2Icon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   PromptInput,
   PromptInputButton,
@@ -50,7 +59,7 @@ import {
 } from '@/components/ai-elements/prompt-input'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { ModelGroupSelector } from '@/components/model-group-selector'
-import type { ModelOption, GroupOption } from '../types'
+import type { ModelOption, GroupOption, QuickPrompt } from '../types'
 
 interface PlaygroundInputProps {
   onSubmit: (text: string) => void
@@ -64,16 +73,12 @@ interface PlaygroundInputProps {
   groups: GroupOption[]
   groupValue: string
   onGroupChange: (value: string) => void
+  quickPrompts: QuickPrompt[]
+  onQuickPromptsChange: (
+    updater: QuickPrompt[] | ((prev: QuickPrompt[]) => QuickPrompt[])
+  ) => void
+  onCreateSession: () => void
 }
-
-const suggestions = [
-  { icon: BarChartIcon, text: 'Analyze data', color: '#76d0eb' },
-  { icon: BoxIcon, text: 'Surprise me', color: '#76d0eb' },
-  { icon: NotepadTextIcon, text: 'Summarize text', color: '#ea8444' },
-  { icon: CodeSquareIcon, text: 'Code', color: '#6c71ff' },
-  { icon: GraduationCapIcon, text: 'Get advice', color: '#76d0eb' },
-  { icon: null, text: 'More' },
-]
 
 export function PlaygroundInput({
   onSubmit,
@@ -87,13 +92,20 @@ export function PlaygroundInput({
   groups,
   groupValue,
   onGroupChange,
+  quickPrompts,
+  onQuickPromptsChange,
+  onCreateSession,
 }: PlaygroundInputProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false)
 
   const isModelSelectDisabled =
     disabled || isModelLoading || models.length === 0
   const isGroupSelectDisabled = disabled || groups.length === 0
+  const visibleQuickPrompts = quickPrompts.filter(
+    (prompt) => prompt.name.trim() && prompt.prompt.trim()
+  )
 
   const handleSubmit = (message: PromptInputMessage) => {
     if (!message.text?.trim() || disabled) return
@@ -107,12 +119,75 @@ export function PlaygroundInput({
     })
   }
 
-  const handleSuggestionClick = (suggestion: string) => {
-    onSubmit(suggestion)
+  const handlePromptChange = (
+    promptId: string,
+    field: keyof Pick<QuickPrompt, 'name' | 'prompt'>,
+    value: string
+  ) => {
+    onQuickPromptsChange((prev) =>
+      prev.map((prompt) =>
+        prompt.id === promptId ? { ...prompt, [field]: value } : prompt
+      )
+    )
+  }
+
+  const handleAddPrompt = () => {
+    onQuickPromptsChange((prev) => [
+      ...prev,
+      {
+        id: `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: t('New prompt'),
+        prompt: '',
+      },
+    ])
+  }
+
+  const handleDeletePrompt = (promptId: string) => {
+    onQuickPromptsChange((prev) =>
+      prev.length <= 1 ? prev : prev.filter((prompt) => prompt.id !== promptId)
+    )
   }
 
   return (
-    <div className='grid shrink-0 gap-4 px-1 md:pb-4'>
+    <div className='grid shrink-0 gap-3 px-3 pb-3 md:px-1 md:pb-4'>
+      <div className='flex min-w-0 items-center gap-2'>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          className='gap-1.5'
+          onClick={onCreateSession}
+        >
+          <PlusIcon className='size-3.5' />
+          {t('New session')}
+        </Button>
+
+        <div className='min-w-0 flex-1'>
+          <Suggestions>
+            {visibleQuickPrompts.map((prompt) => (
+              <Suggestion
+                className='text-xs font-normal sm:text-sm'
+                key={prompt.id}
+                onClick={() => setText(prompt.prompt)}
+                suggestion={prompt.prompt}
+              >
+                {prompt.name}
+              </Suggestion>
+            ))}
+          </Suggestions>
+        </div>
+
+        <Button
+          type='button'
+          variant='outline'
+          size='icon-sm'
+          onClick={() => setPromptDialogOpen(true)}
+          aria-label={t('Manage quick prompts')}
+        >
+          <Settings2Icon className='size-4' />
+        </Button>
+      </div>
+
       <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
         <PromptInputTextarea
           autoComplete='off'
@@ -219,21 +294,74 @@ export function PlaygroundInput({
         </PromptInputFooter>
       </PromptInput>
 
-      <Suggestions>
-        {suggestions.map(({ icon: Icon, text, color }) => (
-          <Suggestion
-            className={`text-xs font-normal sm:text-sm ${
-              text === 'More' ? 'hidden sm:flex' : ''
-            }`}
-            key={text}
-            onClick={() => handleSuggestionClick(text)}
-            suggestion={text}
-          >
-            {Icon && <Icon size={16} style={{ color }} />}
-            {text}
-          </Suggestion>
-        ))}
-      </Suggestions>
+      <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
+        <DialogContent className='max-h-[85vh] max-w-2xl overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle>{t('Quick prompts')}</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-4'>
+            {quickPrompts.map((prompt, index) => (
+              <div key={prompt.id} className='rounded-lg border p-3'>
+                <div className='mb-3 flex items-center justify-between gap-2'>
+                  <span className='text-sm font-medium'>
+                    {t('Prompt')} {index + 1}
+                  </span>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon-sm'
+                    disabled={quickPrompts.length <= 1}
+                    onClick={() => handleDeletePrompt(prompt.id)}
+                    aria-label={t('Delete prompt')}
+                  >
+                    <Trash2Icon className='size-4' />
+                  </Button>
+                </div>
+                <div className='grid gap-3'>
+                  <div className='grid gap-1.5'>
+                    <Label>{t('Name')}</Label>
+                    <Input
+                      value={prompt.name}
+                      onChange={(event) =>
+                        handlePromptChange(
+                          prompt.id,
+                          'name',
+                          event.target.value
+                        )
+                      }
+                      placeholder={t('Prompt name')}
+                    />
+                  </div>
+                  <div className='grid gap-1.5'>
+                    <Label>{t('Prompt')}</Label>
+                    <Textarea
+                      value={prompt.prompt}
+                      onChange={(event) =>
+                        handlePromptChange(
+                          prompt.id,
+                          'prompt',
+                          event.target.value
+                        )
+                      }
+                      placeholder={t('Prompt content')}
+                      rows={4}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type='button' variant='outline' onClick={handleAddPrompt}>
+              <PlusIcon className='size-4' />
+              {t('Add prompt')}
+            </Button>
+            <Button type='button' onClick={() => setPromptDialogOpen(false)}>
+              {t('Done')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

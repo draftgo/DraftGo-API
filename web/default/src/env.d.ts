@@ -25,3 +25,33 @@ declare module '@visactor/react-vchart' {
 declare module '@visactor/vchart-semi-theme' {
   export const initVChartSemiTheme: (opts?: Record<string, unknown>) => void
 }
+
+declare module 'hast' {
+  export interface Element {
+    type: 'element'
+    tagName: string
+    properties?: Record<string, unknown>
+    children: Array<Element | { type: 'text'; value: string }>
+  }
+}
+
+declare module 'sse.js' {
+  export class SSE {
+    constructor(
+      url: string,
+      options?: {
+        headers?: Record<string, string>
+        method?: string
+        payload?: string
+      }
+    )
+    addEventListener(
+      type: 'message',
+      listener: (event: MessageEvent) => void
+    ): void
+    addEventListener(type: string, listener: (event: Event) => void): void
+    readyState: number
+    close(): void
+    stream(): void
+  }
+}

@@ -66,6 +66,7 @@ const OperationSetting = () => {
 
     /* 监控设置 */
     ChannelDisableThreshold: 0,
+    ChannelSlowRequestThreshold: 0,
     QuotaRemindThreshold: 0,
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,

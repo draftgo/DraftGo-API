@@ -65,11 +65,38 @@ export const DEFAULT_PARAMETER_ENABLED: ParameterEnabled = {
   seed: false,
 }
 
+export const DEFAULT_QUICK_PROMPTS = [
+  {
+    id: 'analyze-data',
+    name: '分析数据',
+    prompt: '请帮我分析以下数据，指出关键趋势、异常点和可执行建议：',
+  },
+  {
+    id: 'summarize-text',
+    name: '总结文本',
+    prompt: '请用简洁的中文总结以下内容，并列出重点：',
+  },
+  {
+    id: 'write-code',
+    name: '编写代码',
+    prompt: '请根据下面的需求编写代码，并说明关键实现思路：',
+  },
+  {
+    id: 'get-advice',
+    name: '给出建议',
+    prompt: '请基于下面的情况给出清晰、可执行的建议：',
+  },
+] as const
+
 // Storage keys
 export const STORAGE_KEYS = {
   CONFIG: 'playground_config',
   MESSAGES: 'playground_messages',
   PARAMETER_ENABLED: 'playground_parameter_enabled',
+  SESSIONS: 'playground_sessions',
+  ACTIVE_SESSION_ID: 'playground_active_session_id',
+  QUICK_PROMPTS: 'playground_quick_prompts',
+  SESSION_LIST_COLLAPSED: 'playground_session_list_collapsed',
 } as const
 
 // Error messages

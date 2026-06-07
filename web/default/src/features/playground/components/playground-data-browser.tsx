@@ -36,6 +36,17 @@ import {
 import { STORAGE_KEYS } from '../constants'
 import type { Message } from '../types'
 
+type PlaygroundExportData = {
+  version: number
+  exportedAt: string
+  storage: Partial<
+    Record<(typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS], string>
+  >
+  config?: string | null
+  parameterEnabled?: string | null
+  messages?: string | null
+}
+
 interface PlaygroundDataBrowserProps {
   messages: Message[]
   onClearMessages: () => void
@@ -73,12 +84,20 @@ export function PlaygroundDataBrowser({
   const totalMessages = messages.length
 
   const handleExport = () => {
+    const storage = Object.values(STORAGE_KEYS).reduce<
+      PlaygroundExportData['storage']
+    >((acc, key) => {
+      const value = localStorage.getItem(key)
+      if (value !== null) {
+        acc[key] = value
+      }
+      return acc
+    }, {})
+
     const data = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
-      config: localStorage.getItem(STORAGE_KEYS.CONFIG),
-      parameterEnabled: localStorage.getItem(STORAGE_KEYS.PARAMETER_ENABLED),
-      messages: localStorage.getItem(STORAGE_KEYS.MESSAGES),
+      storage,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
@@ -102,7 +121,18 @@ export function PlaygroundDataBrowser({
       const reader = new FileReader()
       reader.onload = (event) => {
         try {
-          const data = JSON.parse(event.target?.result as string)
+          const data = JSON.parse(
+            event.target?.result as string
+          ) as PlaygroundExportData
+          const storage = data.storage ?? {}
+
+          Object.values(STORAGE_KEYS).forEach((key) => {
+            const value = storage[key]
+            if (typeof value === 'string') {
+              localStorage.setItem(key, value)
+            }
+          })
+
           if (data.config) {
             localStorage.setItem(STORAGE_KEYS.CONFIG, data.config)
           }
@@ -120,6 +150,9 @@ export function PlaygroundDataBrowser({
           }
           toast.success(t('Data imported successfully'))
           setOpen(false)
+          if (Object.keys(storage).length > 0) {
+            window.location.reload()
+          }
         } catch {
           toast.error(t('Invalid import file'))
         }
@@ -153,16 +186,24 @@ export function PlaygroundDataBrowser({
           <div className='bg-muted rounded-lg p-3'>
             <div className='grid grid-cols-2 gap-2 text-sm'>
               <div>
-                <span className='text-muted-foreground'>{t('Conversations')}</span>
+                <span className='text-muted-foreground'>
+                  {t('Conversations')}
+                </span>
                 <p className='font-medium'>{messageCount}</p>
               </div>
               <div>
-                <span className='text-muted-foreground'>{t('Total Messages')}</span>
+                <span className='text-muted-foreground'>
+                  {t('Total Messages')}
+                </span>
                 <p className='font-medium'>{totalMessages}</p>
               </div>
               <div>
-                <span className='text-muted-foreground'>{t('Storage Used')}</span>
-                <p className='font-medium'>{formatSize(storageInfo.totalSize)}</p>
+                <span className='text-muted-foreground'>
+                  {t('Storage Used')}
+                </span>
+                <p className='font-medium'>
+                  {formatSize(storageInfo.totalSize)}
+                </p>
               </div>
             </div>
           </div>

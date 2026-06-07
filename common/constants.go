@@ -155,6 +155,7 @@ var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
 var ChannelDisableThreshold = 5.0
+var ChannelSlowRequestThreshold = 0.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
 var ChannelDisableWindowMinutes = 5
@@ -183,7 +184,7 @@ var BatchUpdateInterval int
 var RelayTimeout int // unit is second
 
 var ChannelTestDefaultTimeout int // unit is second, 0 means no timeout
-var RelayIdleConnTimeout int // unit is second
+var RelayIdleConnTimeout int      // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 

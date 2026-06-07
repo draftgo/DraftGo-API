@@ -276,6 +276,7 @@ export type OperationsSettings = {
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
   ChannelDisableThreshold: string
+  ChannelSlowRequestThreshold: string
   ChannelDisableWindowMinutes: string
   ChannelDisableFailureThreshold: string
   QuotaRemindThreshold: string
