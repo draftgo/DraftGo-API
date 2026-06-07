@@ -22,6 +22,7 @@ import { sendChatCompletion } from '../api'
 import { MESSAGE_STATUS, ERROR_MESSAGES } from '../constants'
 import {
   buildChatCompletionPayload,
+  updateAssistantMessageByKey,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
   processStreamingContent,
@@ -36,25 +37,62 @@ interface UseChatHandlerOptions {
   onMessageUpdate: (updater: (prev: Message[]) => Message[]) => void
 }
 
+type CompareTarget = {
+  model: string
+  assistantMessageKey: string
+}
+
+function getMessagesForModel(messages: Message[], model?: string) {
+  if (!model) return messages
+
+  return messages.filter(
+    (message) =>
+      message.from !== 'assistant' ||
+      !message.compareGroupId ||
+      message.model === model
+  )
+}
+
+function updateTargetAssistantMessage(
+  messages: Message[],
+  assistantMessageKey: string | undefined,
+  updater: (message: Message) => Message
+) {
+  return assistantMessageKey
+    ? updateAssistantMessageByKey(messages, assistantMessageKey, updater)
+    : updateLastAssistantMessage(messages, updater)
+}
+
 /**
- * Hook for handling chat message sending and receiving
+ * Hook for handling chat message sending and receiving.
  */
 export function useChatHandler({
   config,
   parameterEnabled,
   onMessageUpdate,
 }: UseChatHandlerOptions) {
-  const { sendStreamRequest, stopStream, isStreaming } = useStreamRequest()
+  const { sendStreamRequest, stopStream, activeStreamIds, isStreaming } =
+    useStreamRequest()
 
-  // Handle stream update
+  const getConfigForModel = useCallback(
+    (model?: string): PlaygroundConfig => ({
+      ...config,
+      model: model ?? config.model,
+    }),
+    [config]
+  )
+
   const handleStreamUpdate = useCallback(
-    (type: 'reasoning' | 'content', chunk: string) => {
+    (
+      type: 'reasoning' | 'content',
+      chunk: string,
+      assistantMessageKey?: string
+    ) => {
       onMessageUpdate((prev) =>
-        updateLastAssistantMessage(prev, (message) => {
+        updateTargetAssistantMessage(prev, assistantMessageKey, (message) => {
           if (message.status === MESSAGE_STATUS.ERROR) return message
 
           if (type === 'reasoning') {
-            // Direct API reasoning_content
             return {
               ...message,
               reasoning: {
@@ -66,7 +104,6 @@ export function useChatHandler({
             }
           }
 
-          // Content streaming: handle <think> tags
           return {
             ...processStreamingContent(message, chunk),
             status: MESSAGE_STATUS.STREAMING,
@@ -77,46 +114,55 @@ export function useChatHandler({
     [onMessageUpdate]
   )
 
-  // Handle stream complete
-  const handleStreamComplete = useCallback(() => {
-    onMessageUpdate((prev) =>
-      updateLastAssistantMessage(prev, (message) =>
-        message.status === MESSAGE_STATUS.COMPLETE ||
-        message.status === MESSAGE_STATUS.ERROR
-          ? message
-          : { ...finalizeMessage(message), status: MESSAGE_STATUS.COMPLETE }
-      )
-    )
-  }, [onMessageUpdate])
-
-  // Handle stream error
-  const handleStreamError = useCallback(
-    (error: string, errorCode?: string) => {
-      toast.error(error)
+  const handleStreamComplete = useCallback(
+    (assistantMessageKey?: string) => {
       onMessageUpdate((prev) =>
-        updateAssistantMessageWithError(prev, error, errorCode)
+        updateTargetAssistantMessage(prev, assistantMessageKey, (message) =>
+          message.status === MESSAGE_STATUS.COMPLETE ||
+          message.status === MESSAGE_STATUS.ERROR
+            ? message
+            : { ...finalizeMessage(message), status: MESSAGE_STATUS.COMPLETE }
+        )
       )
     },
     [onMessageUpdate]
   )
 
-  // Send streaming chat request
+  const handleStreamError = useCallback(
+    (error: string, errorCode?: string, assistantMessageKey?: string) => {
+      toast.error(error)
+      onMessageUpdate((prev) =>
+        updateAssistantMessageWithError(
+          prev,
+          error,
+          errorCode,
+          assistantMessageKey
+        )
+      )
+    },
+    [onMessageUpdate]
+  )
+
   const sendStreamingChat = useCallback(
-    (messages: Message[]) => {
+    (messages: Message[], model?: string, assistantMessageKey?: string) => {
       const payload = buildChatCompletionPayload(
-        messages,
-        config,
+        getMessagesForModel(messages, model),
+        getConfigForModel(model),
         parameterEnabled
       )
+      const requestId = assistantMessageKey ?? 'default'
+
       sendStreamRequest(
         payload,
-        handleStreamUpdate,
-        handleStreamComplete,
-        handleStreamError
+        (type, chunk) => handleStreamUpdate(type, chunk, assistantMessageKey),
+        () => handleStreamComplete(assistantMessageKey),
+        (error, errorCode) =>
+          handleStreamError(error, errorCode, assistantMessageKey),
+        requestId
       )
     },
     [
-      config,
+      getConfigForModel,
       parameterEnabled,
       sendStreamRequest,
       handleStreamUpdate,
@@ -125,12 +171,11 @@ export function useChatHandler({
     ]
   )
 
-  // Send non-streaming chat request
   const sendNonStreamingChat = useCallback(
-    async (messages: Message[]) => {
+    async (messages: Message[], model?: string, assistantMessageKey?: string) => {
       const payload = buildChatCompletionPayload(
-        messages,
-        config,
+        getMessagesForModel(messages, model),
+        getConfigForModel(model),
         parameterEnabled
       )
 
@@ -140,7 +185,7 @@ export function useChatHandler({
         if (!choice) return
 
         onMessageUpdate((prev) =>
-          updateLastAssistantMessage(prev, (message) => ({
+          updateTargetAssistantMessage(prev, assistantMessageKey, (message) => ({
             ...finalizeMessage(
               {
                 ...message,
@@ -167,40 +212,57 @@ export function useChatHandler({
           err?.response?.data?.message ||
             err?.message ||
             ERROR_MESSAGES.API_REQUEST_ERROR,
-          err?.response?.data?.error?.code || undefined
+          err?.response?.data?.error?.code || undefined,
+          assistantMessageKey
         )
       }
     },
-    [config, parameterEnabled, onMessageUpdate, handleStreamError]
+    [
+      getConfigForModel,
+      parameterEnabled,
+      onMessageUpdate,
+      handleStreamError,
+    ]
   )
 
-  // Send chat request (stream or non-stream based on config)
   const sendChat = useCallback(
-    (messages: Message[]) => {
+    (messages: Message[], model?: string, assistantMessageKey?: string) => {
       if (config.stream) {
-        sendStreamingChat(messages)
+        sendStreamingChat(messages, model, assistantMessageKey)
       } else {
-        sendNonStreamingChat(messages)
+        sendNonStreamingChat(messages, model, assistantMessageKey)
       }
     },
     [config.stream, sendStreamingChat, sendNonStreamingChat]
   )
 
-  // Stop generation
+  const sendCompareChat = useCallback(
+    (messages: Message[], targets: CompareTarget[]) => {
+      targets.forEach((target) => {
+        sendChat(messages, target.model, target.assistantMessageKey)
+      })
+    },
+    [sendChat]
+  )
+
   const stopGeneration = useCallback(() => {
+    const streamIds = activeStreamIds()
     stopStream()
     onMessageUpdate((prev) =>
-      updateLastAssistantMessage(prev, (message) =>
-        message.status === MESSAGE_STATUS.LOADING ||
-        message.status === MESSAGE_STATUS.STREAMING
+      prev.map((message) =>
+        message.from === 'assistant' &&
+        (message.status === MESSAGE_STATUS.LOADING ||
+          message.status === MESSAGE_STATUS.STREAMING) &&
+        (streamIds.length === 0 || streamIds.includes(message.key))
           ? { ...finalizeMessage(message), status: MESSAGE_STATUS.COMPLETE }
           : message
       )
     )
-  }, [stopStream, onMessageUpdate])
+  }, [activeStreamIds, stopStream, onMessageUpdate])
 
   return {
     sendChat,
+    sendCompareChat,
     stopGeneration,
     isGenerating: isStreaming,
   }

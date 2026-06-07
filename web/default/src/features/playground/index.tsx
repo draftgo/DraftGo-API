@@ -57,7 +57,8 @@ export function Playground() {
     toggleSessionList,
   } = usePlaygroundState()
 
-  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
+  const { sendChat, sendCompareChat, stopGeneration, isGenerating } =
+    useChatHandler({
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
@@ -130,15 +131,67 @@ export function Playground() {
     }
   }, [groupsData, setGroups, config.group, updateConfig])
 
+  const getCompareModels = useCallback(() => {
+    const availableModels = new Set(models.map((model) => model.value))
+    const selected = config.compareModels.filter((model) =>
+      availableModels.has(model)
+    )
+    const fallback = availableModels.has(config.model)
+      ? config.model
+      : models[0]?.value
+
+    return Array.from(new Set(selected.length > 0 ? selected : [fallback]))
+      .filter(Boolean)
+      .slice(0, 4)
+  }, [config.compareModels, config.model, models])
+
+  const submitMessages = useCallback(
+    (baseMessages: MessageType[]) => {
+      const compareModels = config.compareMode ? getCompareModels() : []
+
+      if (compareModels.length > 1) {
+        const compareGroupId = `compare-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`
+        const assistantMessages = compareModels.map((model) =>
+          createLoadingAssistantMessage({
+            compareGroupId,
+            model,
+          })
+        )
+        const nextMessages = [...baseMessages, ...assistantMessages]
+
+        updateMessages(nextMessages)
+        sendCompareChat(
+          nextMessages,
+          assistantMessages.map((message) => ({
+            model: message.model || config.model,
+            assistantMessageKey: message.key,
+          }))
+        )
+        return
+      }
+
+      const assistantMessage = createLoadingAssistantMessage({
+        model: config.model,
+      })
+      const nextMessages = [...baseMessages, assistantMessage]
+      updateMessages(nextMessages)
+      sendChat(nextMessages, config.model, assistantMessage.key)
+    },
+    [
+      config.compareMode,
+      config.model,
+      getCompareModels,
+      sendChat,
+      sendCompareChat,
+      updateMessages,
+    ]
+  )
+
   const handleSendMessage = (text: string) => {
     const userMessage = createUserMessage(text)
-    const assistantMessage = createLoadingAssistantMessage()
-
-    const newMessages = [...messages, userMessage, assistantMessage]
-    updateMessages(newMessages)
-
-    // Send chat request
-    sendChat(newMessages)
+    submitMessages([...messages, userMessage])
   }
 
   const handleCopyMessage = (message: MessageType) => {
@@ -152,13 +205,23 @@ export function Playground() {
     const messageIndex = messages.findIndex((m) => m.key === message.key)
     if (messageIndex === -1) return
 
+    if (message.compareGroupId && message.model) {
+      const loadingMessage = createLoadingAssistantMessage({
+        compareGroupId: message.compareGroupId,
+        model: message.model,
+      })
+      const nextMessages = messages.map((item) =>
+        item.key === message.key ? loadingMessage : item
+      )
+      const requestMessages = [...messages.slice(0, messageIndex), loadingMessage]
+      updateMessages(nextMessages)
+      sendChat(requestMessages, message.model, loadingMessage.key)
+      return
+    }
+
     // Remove messages after this one and regenerate
     const messagesUpToHere = messages.slice(0, messageIndex)
-    const loadingMessage = createLoadingAssistantMessage()
-    const newMessages = [...messagesUpToHere, loadingMessage]
-
-    updateMessages(newMessages)
-    sendChat(newMessages)
+    submitMessages(messagesUpToHere)
   }
 
   const handleEditMessage = useCallback((message: MessageType) => {
@@ -189,14 +252,9 @@ export function Playground() {
         return
       }
 
-      const toSubmit = [
-        ...updated.slice(0, index + 1),
-        createLoadingAssistantMessage(),
-      ]
-      updateMessages(toSubmit)
-      sendChat(toSubmit)
+      submitMessages(updated.slice(0, index + 1))
     },
-    [editingMessageKey, messages, updateMessages, sendChat]
+    [editingMessageKey, messages, updateMessages, submitMessages]
   )
 
   const handleDeleteMessage = (message: MessageType) => {
@@ -261,8 +319,14 @@ export function Playground() {
             isModelLoading={isLoadingModels}
             modelValue={config.model}
             models={models}
+            compareMode={config.compareMode}
+            compareModels={config.compareModels}
             quickPrompts={quickPrompts}
             onCreateSession={createSession}
+            onCompareModeChange={(value) => updateConfig('compareMode', value)}
+            onCompareModelsChange={(value) =>
+              updateConfig('compareModels', value)
+            }
             onGroupChange={(value) => updateConfig('group', value)}
             onModelChange={(value) => updateConfig('model', value)}
             onQuickPromptsChange={updateQuickPrompts}

@@ -60,6 +60,7 @@ import {
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 import type { ModelOption, GroupOption, QuickPrompt } from '../types'
+import { PlaygroundModelCompare } from './playground-model-compare'
 
 interface PlaygroundInputProps {
   onSubmit: (text: string) => void
@@ -69,6 +70,10 @@ interface PlaygroundInputProps {
   models: ModelOption[]
   modelValue: string
   onModelChange: (value: string) => void
+  compareMode: boolean
+  compareModels: string[]
+  onCompareModeChange: (value: boolean) => void
+  onCompareModelsChange: (value: string[]) => void
   isModelLoading?: boolean
   groups: GroupOption[]
   groupValue: string
@@ -88,6 +93,10 @@ export function PlaygroundInput({
   models,
   modelValue,
   onModelChange,
+  compareMode,
+  compareModels,
+  onCompareModeChange,
+  onCompareModelsChange,
   isModelLoading = false,
   groups,
   groupValue,
@@ -187,6 +196,15 @@ export function PlaygroundInput({
           <Settings2Icon className='size-4' />
         </Button>
       </div>
+
+      <PlaygroundModelCompare
+        enabled={compareMode}
+        models={models}
+        selectedModels={compareModels}
+        disabled={disabled || isModelLoading}
+        onEnabledChange={onCompareModeChange}
+        onSelectedModelsChange={onCompareModelsChange}
+      />
 
       <PromptInput groupClassName='rounded-xl' onSubmit={handleSubmit}>
         <PromptInputTextarea

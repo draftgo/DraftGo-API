@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { SSE } from 'sse.js'
 import { getCommonHeaders } from '@/lib/api'
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
@@ -26,32 +26,50 @@ import type { ChatCompletionRequest, ChatCompletionChunk } from '../types'
  * Hook for handling streaming chat completion requests
  */
 export function useStreamRequest() {
-  const sseSourceRef = useRef<SSE | null>(null)
-  const isStreamCompleteRef = useRef(false)
+  const sourcesRef = useRef(
+    new Map<string, { source: SSE; isComplete: boolean }>()
+  )
+  const [activeStreams, setActiveStreams] = useState(0)
+
+  const syncActiveStreams = useCallback(() => {
+    setActiveStreams(sourcesRef.current.size)
+  }, [])
 
   const sendStreamRequest = useCallback(
     (
       payload: ChatCompletionRequest,
       onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
       onComplete: () => void,
-      onError: (error: string, errorCode?: string) => void
+      onError: (error: string, errorCode?: string) => void,
+      requestId = 'default'
     ) => {
+      const existing = sourcesRef.current.get(requestId)
+      if (existing) {
+        existing.source.close()
+        sourcesRef.current.delete(requestId)
+      }
+
       const source = new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
         headers: getCommonHeaders(),
         method: 'POST',
         payload: JSON.stringify(payload),
       })
 
-      sseSourceRef.current = source
-      isStreamCompleteRef.current = false
+      sourcesRef.current.set(requestId, { source, isComplete: false })
+      syncActiveStreams()
 
       const closeSource = () => {
         source.close()
-        sseSourceRef.current = null
+        const current = sourcesRef.current.get(requestId)
+        if (current?.source === source) {
+          sourcesRef.current.delete(requestId)
+          syncActiveStreams()
+        }
       }
 
       const handleError = (errorMessage: string, errorCode?: string) => {
-        if (!isStreamCompleteRef.current) {
+        const current = sourcesRef.current.get(requestId)
+        if (!current?.isComplete) {
           onError(errorMessage, errorCode)
           closeSource()
         }
@@ -59,7 +77,8 @@ export function useStreamRequest() {
 
       source.addEventListener('message', (e: MessageEvent) => {
         if (e.data === '[DONE]') {
-          isStreamCompleteRef.current = true
+          const current = sourcesRef.current.get(requestId)
+          if (current) current.isComplete = true
           closeSource()
           onComplete()
           return
@@ -129,26 +148,39 @@ export function useStreamRequest() {
         // eslint-disable-next-line no-console
         console.error('Failed to start SSE stream:', error)
         onError(ERROR_MESSAGES.STREAM_START_ERROR)
-        sseSourceRef.current = null
+        closeSource()
       }
     },
-    []
+    [syncActiveStreams]
   )
 
-  const stopStream = useCallback(() => {
-    if (sseSourceRef.current) {
-      sseSourceRef.current.close()
-      sseSourceRef.current = null
-    }
-  }, [])
+  const stopStream = useCallback(
+    (requestId?: string) => {
+      if (requestId) {
+        const current = sourcesRef.current.get(requestId)
+        if (current) {
+          current.source.close()
+          sourcesRef.current.delete(requestId)
+          syncActiveStreams()
+        }
+        return
+      }
 
-  // eslint-disable-next-line react-hooks/refs
-  const isStreaming = sseSourceRef.current !== null
+      sourcesRef.current.forEach(({ source }) => source.close())
+      sourcesRef.current.clear()
+      syncActiveStreams()
+    },
+    [syncActiveStreams]
+  )
+
+  const activeStreamIds = useCallback(() => {
+    return Array.from(sourcesRef.current.keys())
+  }, [])
 
   return {
     sendStreamRequest,
     stopStream,
-    // eslint-disable-next-line react-hooks/refs
-    isStreaming,
+    activeStreamIds,
+    isStreaming: activeStreams > 0,
   }
 }

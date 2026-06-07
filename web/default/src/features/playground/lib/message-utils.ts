@@ -70,10 +70,13 @@ export function createUserMessage(content: string): Message {
 /**
  * Create a loading assistant message
  */
-export function createLoadingAssistantMessage(): Message {
+export function createLoadingAssistantMessage(
+  overrides: Partial<Pick<Message, 'model' | 'compareGroupId'>> = {}
+): Message {
   return {
     key: nanoid(),
     from: MESSAGE_ROLES.ASSISTANT,
+    ...overrides,
     versions: [createMessageVersion('')],
     reasoning: undefined,
     isReasoningComplete: false,
@@ -219,9 +222,10 @@ export function parseThinkTags(content: string): {
 export function updateAssistantMessageWithError(
   messages: Message[],
   errorMessage: string,
-  errorCode?: string
+  errorCode?: string,
+  messageKey?: string
 ): Message[] {
-  return updateLastAssistantMessage(messages, (message) => {
+  const updater = (message: Message) => {
     const updatedMessage = updateCurrentVersionContent(
       message,
       `${ERROR_MESSAGES.API_REQUEST_ERROR}: ${errorMessage}`
@@ -232,7 +236,11 @@ export function updateAssistantMessageWithError(
       isReasoningStreaming: false,
       errorCode: errorCode || null,
     }
-  })
+  }
+
+  return messageKey
+    ? updateAssistantMessageByKey(messages, messageKey, updater)
+    : updateLastAssistantMessage(messages, updater)
 }
 
 /**
@@ -251,6 +259,21 @@ export function updateLastAssistantMessage(
 
   const updated = [...messages]
   updated[updated.length - 1] = updater(last)
+  return updated
+}
+
+export function updateAssistantMessageByKey(
+  messages: Message[],
+  messageKey: string,
+  updater: (message: Message) => Message
+): Message[] {
+  const index = messages.findIndex(
+    (message) => message.key === messageKey && message.from === 'assistant'
+  )
+  if (index === -1) return messages
+
+  const updated = [...messages]
+  updated[index] = updater(messages[index])
   return updated
 }
 

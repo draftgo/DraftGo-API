@@ -29,6 +29,8 @@ export interface MessageVersion {
 export interface Message {
   key: string
   from: MessageRole
+  model?: string
+  compareGroupId?: string
   versions: MessageVersion[]
   sources?: { href: string; title: string }[]
   reasoning?: {
@@ -109,6 +111,8 @@ export interface ChatCompletionResponse {
 // Configuration types
 export interface PlaygroundConfig {
   model: string
+  compareMode: boolean
+  compareModels: string[]
   group: string
   temperature: number
   top_p: number
