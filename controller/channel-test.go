@@ -143,8 +143,8 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 			requestPath = "/v1/embeddings" // 修改请求路径
 		}
 
-		// VolcEngine 图像生成模型
-		if channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
+		if common.IsImageGenerationModel(testModel) ||
+			channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
 			requestPath = "/v1/images/generations"
 		}
 
@@ -161,6 +161,7 @@ func testChannel(channel *model.Channel, testUserID int, testModel string, endpo
 	if strings.HasPrefix(requestPath, "/v1/responses/compact") {
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
+	isStream = isStream && channelTestEndpointSupportsStream(endpointType, requestPath)
 
 	c.Request = &http.Request{
 		Method: "POST",
@@ -693,8 +694,33 @@ func validateTestResponseBody(respBody []byte, isStream bool) error {
 	return nil
 }
 
-func shouldUseStreamForAutomaticChannelTest(channel *model.Channel) bool {
-	return channel != nil && channel.Type == constant.ChannelTypeCodex
+func channelTestEndpointSupportsStream(endpointType, requestPath string) bool {
+	switch constant.EndpointType(endpointType) {
+	case constant.EndpointTypeOpenAI,
+		constant.EndpointTypeOpenAIResponse,
+		constant.EndpointTypeAnthropic,
+		constant.EndpointTypeGemini:
+		return true
+	case constant.EndpointTypeOpenAIResponseCompact,
+		constant.EndpointTypeEmbeddings,
+		constant.EndpointTypeImageGeneration,
+		constant.EndpointTypeJinaRerank,
+		constant.EndpointTypeOpenAIVideo:
+		return false
+	}
+
+	switch {
+	case requestPath == "/v1/chat/completions":
+		return true
+	case requestPath == "/v1/responses":
+		return true
+	case requestPath == "/v1/messages":
+		return true
+	case strings.Contains(requestPath, "/v1beta/models"):
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldEnableChannelAfterRecoveryProbe(newAPIError *types.NewAPIError, status int, milliseconds int64) bool {
@@ -986,7 +1012,7 @@ func testAllChannels(notify bool) error {
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 			tik := time.Now()
-			result := testChannel(channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
+			result := testChannel(channel, testUserID, "", "", true, common.ChannelTestDefaultTimeout)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 
@@ -1117,7 +1143,7 @@ func probeDisabledChannels() {
 			probeMultiKeyRecovery(channel, probeUserID)
 		} else {
 			tik := time.Now()
-			result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout)
+			result := testChannel(channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout)
 			milliseconds := time.Since(tik).Milliseconds()
 			if shouldEnableChannelAfterRecoveryProbe(result.newAPIError, channel.Status, milliseconds) {
 				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
@@ -1158,7 +1184,7 @@ func probeMultiKeyRecovery(channel *model.Channel, probeUserID int) {
 		}
 		idx := keyIndex
 		tik := time.Now()
-		result := testChannel(channel, probeUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel), common.ChannelTestDefaultTimeout, channelTestOptions{
+		result := testChannel(channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout, channelTestOptions{
 			forcedMultiKeyIndex: &idx,
 		})
 		milliseconds := time.Since(tik).Milliseconds()

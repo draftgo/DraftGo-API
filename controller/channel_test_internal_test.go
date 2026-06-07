@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -79,4 +80,70 @@ func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 2, userID)
+}
+
+func TestChannelTestEndpointSupportsStream(t *testing.T) {
+	tests := []struct {
+		name         string
+		endpointType string
+		requestPath  string
+		want         bool
+	}{
+		{
+			name:         "openai chat endpoint",
+			endpointType: string(constant.EndpointTypeOpenAI),
+			want:         true,
+		},
+		{
+			name:         "responses endpoint",
+			endpointType: string(constant.EndpointTypeOpenAIResponse),
+			want:         true,
+		},
+		{
+			name:         "anthropic endpoint",
+			endpointType: string(constant.EndpointTypeAnthropic),
+			want:         true,
+		},
+		{
+			name:         "gemini endpoint",
+			endpointType: string(constant.EndpointTypeGemini),
+			want:         true,
+		},
+		{
+			name:         "image endpoint",
+			endpointType: string(constant.EndpointTypeImageGeneration),
+			want:         false,
+		},
+		{
+			name:         "embedding endpoint",
+			endpointType: string(constant.EndpointTypeEmbeddings),
+			want:         false,
+		},
+		{
+			name:         "rerank endpoint",
+			endpointType: string(constant.EndpointTypeJinaRerank),
+			want:         false,
+		},
+		{
+			name:         "responses compact endpoint",
+			endpointType: string(constant.EndpointTypeOpenAIResponseCompact),
+			want:         false,
+		},
+		{
+			name:        "auto-detected chat path",
+			requestPath: "/v1/chat/completions",
+			want:        true,
+		},
+		{
+			name:        "auto-detected image path",
+			requestPath: "/v1/images/generations",
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, channelTestEndpointSupportsStream(tt.endpointType, tt.requestPath))
+		})
+	}
 }
