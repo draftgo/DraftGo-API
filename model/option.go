@@ -55,6 +55,8 @@ func InitOptionMap() {
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelSlowRequestThreshold, 'f', -1, 64)
+	common.OptionMap["ChannelStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelStreamSlowRequestThreshold, 'f', -1, 64)
+	common.OptionMap["ChannelNonStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelNonStreamSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelDisableWindowMinutes"] = strconv.Itoa(common.ChannelDisableWindowMinutes)
 	common.OptionMap["ChannelDisableFailureThreshold"] = strconv.Itoa(common.ChannelDisableFailureThreshold)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -189,6 +191,23 @@ func InitOptionMap() {
 
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
+	hasLegacySlowRequestThreshold := false
+	hasStreamSlowRequestThreshold := false
+	hasNonStreamSlowRequestThreshold := false
+	legacySlowRequestThreshold := ""
+
+	for _, option := range options {
+		switch option.Key {
+		case "ChannelSlowRequestThreshold":
+			hasLegacySlowRequestThreshold = true
+			legacySlowRequestThreshold = option.Value
+		case "ChannelStreamSlowRequestThreshold":
+			hasStreamSlowRequestThreshold = true
+		case "ChannelNonStreamSlowRequestThreshold":
+			hasNonStreamSlowRequestThreshold = true
+		}
+	}
+
 	for _, option := range options {
 		if option.Key == "SystemName" {
 			option.Value = common.NormalizeSystemName(option.Value)
@@ -196,6 +215,14 @@ func loadOptionsFromDatabase() {
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+	if hasLegacySlowRequestThreshold {
+		if !hasStreamSlowRequestThreshold {
+			_ = updateOptionMap("ChannelStreamSlowRequestThreshold", legacySlowRequestThreshold)
+		}
+		if !hasNonStreamSlowRequestThreshold {
+			_ = updateOptionMap("ChannelNonStreamSlowRequestThreshold", legacySlowRequestThreshold)
 		}
 	}
 }
@@ -566,6 +593,10 @@ func updateOptionMap(key string, value string) (err error) {
 		common.ChannelDisableThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelSlowRequestThreshold":
 		common.ChannelSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
+	case "ChannelStreamSlowRequestThreshold":
+		common.ChannelStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
+	case "ChannelNonStreamSlowRequestThreshold":
+		common.ChannelNonStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelDisableWindowMinutes":
 		common.ChannelDisableWindowMinutes, _ = strconv.Atoi(value)
 	case "ChannelDisableFailureThreshold":

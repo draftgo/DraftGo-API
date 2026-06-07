@@ -35,7 +35,8 @@ export default function SettingsMonitoring(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
-    ChannelSlowRequestThreshold: '',
+    ChannelStreamSlowRequestThreshold: '',
+    ChannelNonStreamSlowRequestThreshold: '',
     QuotaRemindThreshold: '',
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,
@@ -208,19 +209,38 @@ export default function SettingsMonitoring(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
-                  label={t('文本慢请求阈值')}
+                  label={t('流式文本慢请求阈值')}
                   step={1}
                   min={0}
                   suffix={t('秒')}
                   extraText={t(
-                    '仅统计文本请求；流式按首字时间，非流式按总耗时，0 表示关闭',
+                    '仅统计流式文本请求，按首字时间判断，0 表示关闭',
                   )}
                   placeholder={''}
-                  field={'ChannelSlowRequestThreshold'}
+                  field={'ChannelStreamSlowRequestThreshold'}
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
-                      ChannelSlowRequestThreshold: String(value),
+                      ChannelStreamSlowRequestThreshold: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('非流式文本慢请求阈值')}
+                  step={1}
+                  min={0}
+                  suffix={t('秒')}
+                  extraText={t(
+                    '仅统计非流式文本请求，按总耗时判断，0 表示关闭',
+                  )}
+                  placeholder={''}
+                  field={'ChannelNonStreamSlowRequestThreshold'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      ChannelNonStreamSlowRequestThreshold: String(value),
                     })
                   }
                 />

@@ -55,7 +55,8 @@ const numericString = z.string().refine((value) => {
 const monitoringSchema = z
   .object({
     ChannelDisableThreshold: numericString,
-    ChannelSlowRequestThreshold: numericString,
+    ChannelStreamSlowRequestThreshold: numericString,
+    ChannelNonStreamSlowRequestThreshold: numericString,
     ChannelDisableWindowMinutes: numericString,
     ChannelDisableFailureThreshold: numericString,
     QuotaRemindThreshold: numericString,
@@ -115,7 +116,8 @@ type MonitoringFormInput = z.input<typeof monitoringSchema>
 type MonitoringSettingsSectionProps = {
   defaultValues: {
     ChannelDisableThreshold: string
-    ChannelSlowRequestThreshold: string
+    ChannelStreamSlowRequestThreshold: string
+    ChannelNonStreamSlowRequestThreshold: string
     ChannelDisableWindowMinutes: string
     ChannelDisableFailureThreshold: string
     QuotaRemindThreshold: string
@@ -138,7 +140,8 @@ function normalizeLineEndings(value: string) {
 
 type NormalizedMonitoringValues = {
   ChannelDisableThreshold: string
-  ChannelSlowRequestThreshold: string
+  ChannelStreamSlowRequestThreshold: string
+  ChannelNonStreamSlowRequestThreshold: string
   ChannelDisableWindowMinutes: string
   ChannelDisableFailureThreshold: string
   QuotaRemindThreshold: string
@@ -158,7 +161,10 @@ const buildFormDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): MonitoringFormInput => ({
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
-  ChannelSlowRequestThreshold: defaults.ChannelSlowRequestThreshold ?? '',
+  ChannelStreamSlowRequestThreshold:
+    defaults.ChannelStreamSlowRequestThreshold ?? '',
+  ChannelNonStreamSlowRequestThreshold:
+    defaults.ChannelNonStreamSlowRequestThreshold ?? '',
   ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
   ChannelDisableFailureThreshold:
     defaults.ChannelDisableFailureThreshold ?? '3',
@@ -189,8 +195,11 @@ const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
-  ChannelSlowRequestThreshold: (
-    defaults.ChannelSlowRequestThreshold ?? ''
+  ChannelStreamSlowRequestThreshold: (
+    defaults.ChannelStreamSlowRequestThreshold ?? ''
+  ).trim(),
+  ChannelNonStreamSlowRequestThreshold: (
+    defaults.ChannelNonStreamSlowRequestThreshold ?? ''
   ).trim(),
   ChannelDisableWindowMinutes: (
     defaults.ChannelDisableWindowMinutes ?? '5'
@@ -226,7 +235,10 @@ const normalizeFormValues = (
   values: MonitoringFormValues
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
-  ChannelSlowRequestThreshold: values.ChannelSlowRequestThreshold.trim(),
+  ChannelStreamSlowRequestThreshold:
+    values.ChannelStreamSlowRequestThreshold.trim(),
+  ChannelNonStreamSlowRequestThreshold:
+    values.ChannelNonStreamSlowRequestThreshold.trim(),
   ChannelDisableWindowMinutes: values.ChannelDisableWindowMinutes.trim(),
   ChannelDisableFailureThreshold: values.ChannelDisableFailureThreshold.trim(),
   QuotaRemindThreshold: values.QuotaRemindThreshold.trim(),
@@ -413,11 +425,11 @@ export function MonitoringSettingsSection({
           <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
-              name='ChannelSlowRequestThreshold'
+              name='ChannelStreamSlowRequestThreshold'
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('Slow text request threshold (seconds)')}
+                    {t('Streaming text slow request threshold (seconds)')}
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -430,7 +442,34 @@ export function MonitoringSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Only text requests are counted. Streaming requests use first-token latency; non-streaming requests use total duration. 0 disables this rule.'
+                      'Only streaming text requests are counted. Uses first-token latency. 0 disables this rule.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='ChannelNonStreamSlowRequestThreshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Non-streaming text slow request threshold (seconds)')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step={1}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Only non-streaming text requests are counted. Uses total duration. 0 disables this rule.'
                     )}
                   </FormDescription>
                   <FormMessage />

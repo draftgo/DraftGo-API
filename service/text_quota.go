@@ -357,9 +357,18 @@ func textSlowRequestDuration(relayInfo *relaycommon.RelayInfo, now time.Time) (t
 	return now.Sub(relayInfo.StartTime), "总耗时", true
 }
 
+func textSlowRequestThreshold(relayInfo *relaycommon.RelayInfo) float64 {
+	if relayInfo == nil {
+		return 0
+	}
+	if relayInfo.IsStream {
+		return common.ChannelStreamSlowRequestThreshold
+	}
+	return common.ChannelNonStreamSlowRequestThreshold
+}
+
 func recordSlowTextRequestIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) {
-	thresholdSeconds := common.ChannelSlowRequestThreshold
-	if !common.AutomaticDisableChannelEnabled || thresholdSeconds <= 0 {
+	if !common.AutomaticDisableChannelEnabled {
 		return
 	}
 	if ctx != nil && ctx.GetBool("image_generation_call") {
@@ -369,6 +378,11 @@ func recordSlowTextRequestIfNeeded(ctx *gin.Context, relayInfo *relaycommon.Rela
 		return
 	}
 	if ctx == nil || relayInfo == nil || relayInfo.ChannelMeta == nil || relayInfo.ChannelId == 0 {
+		return
+	}
+
+	thresholdSeconds := textSlowRequestThreshold(relayInfo)
+	if thresholdSeconds <= 0 {
 		return
 	}
 

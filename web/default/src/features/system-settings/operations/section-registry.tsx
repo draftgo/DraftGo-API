@@ -48,7 +48,10 @@ const OPERATIONS_SECTIONS = [
       <MonitoringSettingsSection
         defaultValues={{
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
-          ChannelSlowRequestThreshold: settings.ChannelSlowRequestThreshold,
+          ChannelStreamSlowRequestThreshold:
+            settings.ChannelStreamSlowRequestThreshold,
+          ChannelNonStreamSlowRequestThreshold:
+            settings.ChannelNonStreamSlowRequestThreshold,
           ChannelDisableWindowMinutes: settings.ChannelDisableWindowMinutes,
           ChannelDisableFailureThreshold:
             settings.ChannelDisableFailureThreshold,

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -327,6 +328,22 @@ func TestTextSlowRequestDuration(t *testing.T) {
 		require.Equal(t, "总耗时", metricName)
 		require.Equal(t, 12*time.Second, duration)
 	})
+}
+
+func TestTextSlowRequestThreshold(t *testing.T) {
+	originalStreamThreshold := common.ChannelStreamSlowRequestThreshold
+	originalNonStreamThreshold := common.ChannelNonStreamSlowRequestThreshold
+	t.Cleanup(func() {
+		common.ChannelStreamSlowRequestThreshold = originalStreamThreshold
+		common.ChannelNonStreamSlowRequestThreshold = originalNonStreamThreshold
+	})
+
+	common.ChannelStreamSlowRequestThreshold = 3
+	common.ChannelNonStreamSlowRequestThreshold = 30
+
+	require.Equal(t, 3.0, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: true}))
+	require.Equal(t, 30.0, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: false}))
+	require.Zero(t, textSlowRequestThreshold(nil))
 }
 
 func TestCalculateTextQuotaSummaryHandlesLegacyClaudeDerivedOpenAIUsage(t *testing.T) {
