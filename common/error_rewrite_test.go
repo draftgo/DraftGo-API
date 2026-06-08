@@ -18,12 +18,12 @@ func TestRewriteUpstreamError_Enabled(t *testing.T) {
 		{
 			name:     "OpenAI invalid API key",
 			input:    "Incorrect API key provided: sk-proj-xxx. You can find your API key at https://platform.openai.com/account/api-keys.",
-			expected: "服务暂时不可用，请联系管理员",
+			expected: "认证失败，请检查密钥或连通性",
 		},
 		{
 			name:     "Claude authentication error",
 			input:    "authentication_error: invalid x-api-key",
-			expected: "服务暂时不可用，请联系管理员",
+			expected: "认证失败，请检查密钥或连通性",
 		},
 		// Quota errors
 		{

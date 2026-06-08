@@ -32,7 +32,7 @@ var upstreamErrorRules = []upstreamErrorRule{
 	// Authentication errors - hide which provider's key is invalid
 	{
 		keywords:    []string{"invalid api key", "invalid x-api-key", "incorrect api key", "invalid_api_key", "authentication_error", "invalid auth"},
-		replacement: "服务暂时不可用，请联系管理员",
+		replacement: "认证失败，请检查密钥或连通性",
 	},
 	// Quota/billing errors - hide upstream account status
 	{
