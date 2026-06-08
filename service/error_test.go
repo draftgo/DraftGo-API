@@ -122,6 +122,118 @@ func TestRelayErrorHandlerKeepsOpenAIErrorMessage(t *testing.T) {
 	require.Equal(t, message, newAPIError.Error())
 }
 
+func TestRelayErrorHandlerFinalOpenAIErrorSanitizesUpstreamURL(t *testing.T) {
+	body := `{"error":{"message":"503 Server Error: Service Unavailable for url: https://upstream.example.com/v1/chat/completions","type":"server_error","code":"server_error"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusServiceUnavailable,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	finalError := newAPIError.ToOpenAIError()
+	require.Equal(t, common.DefaultUpstreamErrorMessage, finalError.Message)
+	require.NotContains(t, finalError.Message, "upstream.example.com")
+}
+
+func TestRelayErrorHandlerFinalOpenAIErrorUsesDefaultForUnknownUpstreamMessage(t *testing.T) {
+	body := `{"error":{"message":"provider secret shard alpha returned custom failure for url: https://upstream.example.com/v1/chat/completions","type":"server_error","code":"server_error"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, false)
+
+	require.NotNil(t, newAPIError)
+	require.Contains(t, newAPIError.Error(), "provider secret shard alpha")
+	finalError := newAPIError.ToOpenAIError()
+	require.Equal(t, common.DefaultUpstreamErrorMessage, finalError.Message)
+	require.NotContains(t, finalError.Message, "provider secret shard alpha")
+	require.NotContains(t, finalError.Message, "upstream.example.com")
+}
+
+func TestRelayErrorHandlerChannelTestKeepsOriginalErrorForAdmin(t *testing.T) {
+	body := `{"error":{"message":"provider secret shard alpha returned custom failure for url: https://upstream.example.com/v1/chat/completions","type":"server_error","code":"server_error"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusBadGateway,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}
+
+	newAPIError := RelayErrorHandler(context.Background(), resp, true)
+
+	require.NotNil(t, newAPIError)
+	require.Contains(t, newAPIError.Error(), "provider secret shard alpha")
+	require.Contains(t, newAPIError.Error(), "upstream.example.com")
+}
+
+func TestTaskErrorWrapperSanitizesUpstreamURL(t *testing.T) {
+	taskErr := TaskErrorWrapper(
+		fmt.Errorf("503 Server Error: Service Unavailable for url: https://upstream.example.com/v1/chat/completions"),
+		"fail_to_fetch_task",
+		http.StatusServiceUnavailable,
+	)
+
+	require.NotNil(t, taskErr)
+	require.NotContains(t, taskErr.Message, "upstream.example.com")
+	require.Equal(t, common.DefaultUpstreamErrorMessage, taskErr.Message)
+}
+
+func TestTaskErrorWrapperSanitizesBareUpstreamDomain(t *testing.T) {
+	taskErr := TaskErrorWrapper(
+		fmt.Errorf("upstream api.provider.example.com returned overload"),
+		"upstream_error",
+		http.StatusBadGateway,
+	)
+
+	require.NotNil(t, taskErr)
+	require.NotContains(t, taskErr.Message, "api.provider.example.com")
+	require.Contains(t, taskErr.Message, "***.***.***.com")
+}
+
+func TestSanitizeTaskErrorUsesDefaultForUnknownUpstreamMessage(t *testing.T) {
+	taskErr := TaskErrorWrapper(
+		fmt.Errorf("provider secret shard alpha returned custom failure for url: https://upstream.example.com/v1/jobs"),
+		"upstream_error",
+		http.StatusBadGateway,
+	)
+
+	SanitizeTaskError(taskErr)
+
+	require.NotNil(t, taskErr)
+	require.Equal(t, common.DefaultUpstreamErrorMessage, taskErr.Message)
+	require.NotContains(t, taskErr.Message, "provider secret shard alpha")
+	require.NotContains(t, taskErr.Message, "upstream.example.com")
+}
+
+func TestSanitizeTaskErrorKeepsLocalValidationMessage(t *testing.T) {
+	taskErr := TaskErrorWrapperLocal(
+		fmt.Errorf("prompt is required"),
+		"invalid_request",
+		http.StatusBadRequest,
+	)
+
+	SanitizeTaskError(taskErr)
+
+	require.NotNil(t, taskErr)
+	require.Equal(t, "prompt is required", taskErr.Message)
+}
+
+func TestTaskErrorWrapperRewritesServiceUnavailable(t *testing.T) {
+	taskErr := TaskErrorWrapper(
+		fmt.Errorf("Service Unavailable from https://hidden.example.net/v1/jobs"),
+		"upstream_error",
+		http.StatusServiceUnavailable,
+	)
+
+	require.NotNil(t, taskErr)
+	require.Equal(t, common.DefaultUpstreamErrorMessage, taskErr.Message)
+}
+
 func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	withDebugEnabled(t, true)
 

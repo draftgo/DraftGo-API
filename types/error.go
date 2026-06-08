@@ -91,6 +91,7 @@ type NewAPIError struct {
 	Err            error
 	RelayError     any
 	skipRetry      bool
+	upstreamError  bool
 	recordErrorLog *bool
 	errorType      ErrorType
 	errorCode      ErrorCode
@@ -202,9 +203,14 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 		}
 	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
-		// Rewrite upstream error messages to hide provider details from end users
-		result.Message = common.RewriteUpstreamError(result.Message)
-		result.Message = common.MaskSensitiveInfo(result.Message)
+		// Strictly rewrite upstream error messages to hide provider details
+		// from end users. Local validation/business errors keep their original
+		// wording but still go through sensitive-info masking.
+		if e.IsUpstreamError() {
+			result.Message = common.SanitizeUpstreamErrorStrict(result.Message)
+		} else {
+			result.Message = common.SanitizeUpstreamError(result.Message)
+		}
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
@@ -235,9 +241,14 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 		}
 	}
 	if e.errorCode != ErrorCodeCountTokenFailed {
-		// Rewrite upstream error messages to hide provider details from end users
-		result.Message = common.RewriteUpstreamError(result.Message)
-		result.Message = common.MaskSensitiveInfo(result.Message)
+		// Strictly rewrite upstream error messages to hide provider details
+		// from end users. Local validation/business errors keep their original
+		// wording but still go through sensitive-info masking.
+		if e.IsUpstreamError() {
+			result.Message = common.SanitizeUpstreamErrorStrict(result.Message)
+		} else {
+			result.Message = common.SanitizeUpstreamError(result.Message)
+		}
 	}
 	if result.Message == "" {
 		result.Message = string(e.errorType)
@@ -333,11 +344,12 @@ func WithOpenAIError(openAIError OpenAIError, statusCode int, ops ...NewAPIError
 		openAIError.Type = "upstream_error"
 	}
 	e := &NewAPIError{
-		RelayError: openAIError,
-		errorType:  ErrorTypeOpenAIError,
-		StatusCode: statusCode,
-		Err:        errors.New(openAIError.Message),
-		errorCode:  ErrorCode(code),
+		RelayError:    openAIError,
+		errorType:     ErrorTypeOpenAIError,
+		StatusCode:    statusCode,
+		Err:           errors.New(openAIError.Message),
+		errorCode:     ErrorCode(code),
+		upstreamError: true,
 	}
 	// OpenRouter
 	if len(openAIError.Metadata) > 0 {
@@ -357,11 +369,12 @@ func WithClaudeError(claudeError ClaudeError, statusCode int, ops ...NewAPIError
 		claudeError.Type = "upstream_error"
 	}
 	e := &NewAPIError{
-		RelayError: claudeError,
-		errorType:  ErrorTypeClaudeError,
-		StatusCode: statusCode,
-		Err:        errors.New(claudeError.Message),
-		errorCode:  ErrorCode(claudeError.Type),
+		RelayError:    claudeError,
+		errorType:     ErrorTypeClaudeError,
+		StatusCode:    statusCode,
+		Err:           errors.New(claudeError.Message),
+		errorCode:     ErrorCode(claudeError.Type),
+		upstreamError: true,
 	}
 	for _, op := range ops {
 		op(e)
@@ -382,6 +395,28 @@ func IsSkipRetryError(err *NewAPIError) bool {
 	}
 
 	return err.skipRetry
+}
+
+func (e *NewAPIError) IsUpstreamError() bool {
+	if e == nil {
+		return false
+	}
+	if e.upstreamError {
+		return true
+	}
+	return e.errorType == ErrorTypeUpstreamError
+}
+
+func ErrOptionWithUpstreamError() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.upstreamError = true
+	}
+}
+
+func ErrOptionWithLocalError() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.upstreamError = false
+	}
 }
 
 func ErrOptionWithSkipRetry() NewAPIErrorOptions {

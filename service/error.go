@@ -247,9 +247,8 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 	lowerText := strings.ToLower(text)
 	if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 		common.SysLog(fmt.Sprintf("error: %s", text))
-		//text = "请求上游地址失败"
-		text = common.MaskSensitiveInfo(text)
 	}
+	text = common.SanitizeUpstreamError(text)
 	//避免暴露内部错误
 	taskError := &dto.TaskError{
 		Code:       code,
@@ -266,10 +265,31 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
 	}
+	message := common.SanitizeUpstreamError(apiErr.Err.Error())
+	if apiErr.IsUpstreamError() {
+		message = common.SanitizeUpstreamErrorStrict(apiErr.Err.Error())
+	}
 	return &dto.TaskError{
 		Code:       string(apiErr.GetErrorCode()),
-		Message:    apiErr.Err.Error(),
+		Message:    message,
 		StatusCode: apiErr.StatusCode,
 		Error:      apiErr.Err,
+	}
+}
+
+func SanitizeTaskError(taskErr *dto.TaskError) {
+	if taskErr == nil {
+		return
+	}
+	if taskErr.LocalError {
+		taskErr.Message = common.SanitizeUpstreamError(taskErr.Message)
+		if text, ok := taskErr.Data.(string); ok {
+			taskErr.Data = common.SanitizeUpstreamError(text)
+		}
+		return
+	}
+	taskErr.Message = common.SanitizeUpstreamErrorStrict(taskErr.Message)
+	if text, ok := taskErr.Data.(string); ok {
+		taskErr.Data = common.SanitizeUpstreamErrorStrict(text)
 	}
 }
