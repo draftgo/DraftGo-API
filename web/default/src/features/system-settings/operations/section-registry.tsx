@@ -70,6 +70,8 @@ const OPERATIONS_SECTIONS = [
             settings['monitor_setting.recovery_mode'],
           'monitor_setting.recovery_probe_minutes':
             settings['monitor_setting.recovery_probe_minutes'],
+          'monitor_setting.recovery_probe_count':
+            settings['monitor_setting.recovery_probe_count'],
           'monitor_setting.recovery_threshold_seconds':
             settings['monitor_setting.recovery_threshold_seconds'],
         }}

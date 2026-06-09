@@ -290,6 +290,7 @@ export type OperationsSettings = {
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.recovery_mode': string
   'monitor_setting.recovery_probe_minutes': number
+  'monitor_setting.recovery_probe_count': number
   'monitor_setting.recovery_threshold_seconds': number
   SMTPServer: string
   SMTPPort: string

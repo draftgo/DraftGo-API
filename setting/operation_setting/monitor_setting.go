@@ -12,6 +12,7 @@ type MonitorSetting struct {
 	AutoTestChannelMinutes   float64 `json:"auto_test_channel_minutes"`
 	RecoveryMode             string  `json:"recovery_mode"`
 	RecoveryProbeMinutes     float64 `json:"recovery_probe_minutes"`
+	RecoveryProbeCount       int     `json:"recovery_probe_count"`
 	RecoveryThresholdSeconds float64 `json:"recovery_threshold_seconds"`
 }
 
@@ -21,6 +22,7 @@ var monitorSetting = MonitorSetting{
 	AutoTestChannelMinutes:   10,
 	RecoveryMode:             "follow",
 	RecoveryProbeMinutes:     5,
+	RecoveryProbeCount:       1,
 	RecoveryThresholdSeconds: 15,
 }
 

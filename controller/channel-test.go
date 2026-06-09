@@ -48,6 +48,11 @@ type channelTestOptions struct {
 	forcedMultiKeyIndex *int
 }
 
+type recoveryProbeAttempt struct {
+	result       testResult
+	milliseconds int64
+}
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -730,6 +735,56 @@ func shouldEnableChannelAfterRecoveryProbe(newAPIError *types.NewAPIError, statu
 	return isWithinRecoveryThreshold(milliseconds)
 }
 
+func recoveryProbeCount() int {
+	count := operation_setting.GetMonitorSetting().RecoveryProbeCount
+	if count < 1 {
+		return 1
+	}
+	return count
+}
+
+func runRecoveryProbeAttempts(channel *model.Channel, probeUserID int, options channelTestOptions) []recoveryProbeAttempt {
+	count := recoveryProbeCount()
+	attempts := make([]recoveryProbeAttempt, count)
+	var wg sync.WaitGroup
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		index := i
+		go func() {
+			defer wg.Done()
+			tik := time.Now()
+			result := testChannel(channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout, options)
+			attempts[index] = recoveryProbeAttempt{
+				result:       result,
+				milliseconds: time.Since(tik).Milliseconds(),
+			}
+		}()
+	}
+	wg.Wait()
+	return attempts
+}
+
+func allRecoveryProbeAttemptsPassed(attempts []recoveryProbeAttempt, status int) bool {
+	if len(attempts) == 0 {
+		return false
+	}
+	for _, attempt := range attempts {
+		if !shouldEnableChannelAfterRecoveryProbe(attempt.result.newAPIError, status, attempt.milliseconds) {
+			return false
+		}
+	}
+	return true
+}
+
+func firstRecoveryProbeContext(attempts []recoveryProbeAttempt) *gin.Context {
+	for _, attempt := range attempts {
+		if attempt.result.context != nil {
+			return attempt.result.context
+		}
+	}
+	return nil
+}
+
 func isWithinRecoveryThreshold(milliseconds int64) bool {
 	thresholdSeconds := operation_setting.GetMonitorSetting().RecoveryThresholdSeconds
 	if thresholdSeconds <= 0 {
@@ -1142,11 +1197,11 @@ func probeDisabledChannels() {
 		if channel.ChannelInfo.IsMultiKey {
 			probeMultiKeyRecovery(channel, probeUserID)
 		} else {
-			tik := time.Now()
-			result := testChannel(channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout)
-			milliseconds := time.Since(tik).Milliseconds()
-			if shouldEnableChannelAfterRecoveryProbe(result.newAPIError, channel.Status, milliseconds) {
-				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+			attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{})
+			if allRecoveryProbeAttemptsPassed(attempts, channel.Status) {
+				if context := firstRecoveryProbeContext(attempts); context != nil {
+					service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
+				}
 			}
 		}
 		time.Sleep(common.RequestInterval)
@@ -1183,13 +1238,13 @@ func probeMultiKeyRecovery(channel *model.Channel, probeUserID int) {
 			continue
 		}
 		idx := keyIndex
-		tik := time.Now()
-		result := testChannel(channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout, channelTestOptions{
+		attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{
 			forcedMultiKeyIndex: &idx,
 		})
-		milliseconds := time.Since(tik).Milliseconds()
-		if shouldEnableChannelAfterRecoveryProbe(result.newAPIError, common.ChannelStatusAutoDisabled, milliseconds) {
-			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+		if allRecoveryProbeAttemptsPassed(attempts, common.ChannelStatusAutoDisabled) {
+			if context := firstRecoveryProbeContext(attempts); context != nil {
+				service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
+			}
 		}
 		time.Sleep(common.RequestInterval)
 	}

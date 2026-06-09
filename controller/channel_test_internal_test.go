@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http/httptest"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -146,4 +148,51 @@ func TestChannelTestEndpointSupportsStream(t *testing.T) {
 			require.Equal(t, tt.want, channelTestEndpointSupportsStream(tt.endpointType, tt.requestPath))
 		})
 	}
+}
+
+func TestRecoveryProbeCountDefaultsToOne(t *testing.T) {
+	setting := operation_setting.GetMonitorSetting()
+	originalCount := setting.RecoveryProbeCount
+	t.Cleanup(func() {
+		setting.RecoveryProbeCount = originalCount
+	})
+
+	setting.RecoveryProbeCount = 0
+	require.Equal(t, 1, recoveryProbeCount())
+
+	setting.RecoveryProbeCount = 3
+	require.Equal(t, 3, recoveryProbeCount())
+}
+
+func TestAllRecoveryProbeAttemptsPassedRequiresEveryAttempt(t *testing.T) {
+	setting := operation_setting.GetMonitorSetting()
+	originalThreshold := setting.RecoveryThresholdSeconds
+	originalEnable := common.AutomaticEnableChannelEnabled
+	t.Cleanup(func() {
+		setting.RecoveryThresholdSeconds = originalThreshold
+		common.AutomaticEnableChannelEnabled = originalEnable
+	})
+
+	common.AutomaticEnableChannelEnabled = true
+	setting.RecoveryThresholdSeconds = 10
+
+	require.True(t, allRecoveryProbeAttemptsPassed([]recoveryProbeAttempt{
+		{milliseconds: 9000},
+		{milliseconds: 10000},
+	}, common.ChannelStatusAutoDisabled))
+
+	require.False(t, allRecoveryProbeAttemptsPassed([]recoveryProbeAttempt{
+		{milliseconds: 9000},
+		{milliseconds: 10001},
+	}, common.ChannelStatusAutoDisabled))
+
+	require.False(t, allRecoveryProbeAttemptsPassed([]recoveryProbeAttempt{
+		{milliseconds: 9000},
+		{
+			result: testResult{
+				newAPIError: types.NewError(errors.New("probe failed"), types.ErrorCodeDoRequestFailed),
+			},
+			milliseconds: 1000,
+		},
+	}, common.ChannelStatusAutoDisabled))
 }

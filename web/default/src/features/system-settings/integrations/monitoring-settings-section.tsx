@@ -76,6 +76,10 @@ const monitoringSchema = z
         .number()
         .int()
         .min(1, 'Interval must be at least 1 minute'),
+      recovery_probe_count: z.coerce
+        .number()
+        .int()
+        .min(1, 'Probe attempts must be at least 1'),
       recovery_threshold_seconds: z.coerce
         .number()
         .int()
@@ -130,6 +134,7 @@ type MonitoringSettingsSectionProps = {
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.recovery_mode': string
     'monitor_setting.recovery_probe_minutes': number
+    'monitor_setting.recovery_probe_count': number
     'monitor_setting.recovery_threshold_seconds': number
   }
 }
@@ -154,6 +159,7 @@ type NormalizedMonitoringValues = {
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.recovery_mode': string
   'monitor_setting.recovery_probe_minutes': number
+  'monitor_setting.recovery_probe_count': number
   'monitor_setting.recovery_threshold_seconds': number
 }
 
@@ -186,6 +192,7 @@ const buildFormDefaults = (
       'follow',
     recovery_probe_minutes:
       defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+    recovery_probe_count: defaults['monitor_setting.recovery_probe_count'] ?? 1,
     recovery_threshold_seconds:
       defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
   },
@@ -227,6 +234,8 @@ const normalizeDefaults = (
     defaults['monitor_setting.recovery_mode'] ?? 'follow',
   'monitor_setting.recovery_probe_minutes':
     defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+  'monitor_setting.recovery_probe_count':
+    defaults['monitor_setting.recovery_probe_count'] ?? 1,
   'monitor_setting.recovery_threshold_seconds':
     defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
 })
@@ -260,6 +269,8 @@ const normalizeFormValues = (
   'monitor_setting.recovery_mode': values.monitor_setting.recovery_mode,
   'monitor_setting.recovery_probe_minutes':
     values.monitor_setting.recovery_probe_minutes,
+  'monitor_setting.recovery_probe_count':
+    values.monitor_setting.recovery_probe_count,
   'monitor_setting.recovery_threshold_seconds':
     values.monitor_setting.recovery_threshold_seconds,
 })
@@ -659,6 +670,34 @@ export function MonitoringSettingsSection({
                   <FormDescription>
                     {t(
                       'Recovery checks must finish within this time; 0 disables the limit'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='monitor_setting.recovery_probe_count'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recovery probe attempts')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      disabled={
+                        form.watch('monitor_setting.recovery_mode') !==
+                        'independent'
+                      }
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Concurrent tests per recovery round; all must pass within the recovery threshold'
                     )}
                   </FormDescription>
                   <FormMessage />
