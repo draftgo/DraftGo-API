@@ -67,6 +67,7 @@ import type {
   Modality,
   ModelCapability,
   PriceType,
+  PricingRateLimitConfig,
   PricingModel,
   TokenUnit,
 } from '../types'
@@ -906,6 +907,7 @@ export interface ModelDetailsContentProps {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
+  rateLimitConfig?: PricingRateLimitConfig
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -984,6 +986,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
           <ModelDetailsApi
             model={props.model}
             endpointMap={props.endpointMap}
+            rateLimitConfig={props.rateLimitConfig}
           />
         </TabsContent>
       </Tabs>
@@ -1039,6 +1042,7 @@ export function ModelDetails() {
     isLoading,
     priceRate,
     usdExchangeRate,
+    rateLimitConfig,
   } = usePricingData()
 
   const tokenUnit: TokenUnit =
@@ -1118,6 +1122,7 @@ export function ModelDetails() {
           usdExchangeRate={usdExchangeRate ?? 1}
           tokenUnit={tokenUnit}
           showRechargePrice={search.rechargePrice ?? false}
+          rateLimitConfig={rateLimitConfig}
           endpointMap={
             (endpointMap as Record<
               string,

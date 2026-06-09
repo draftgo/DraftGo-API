@@ -46,14 +46,12 @@ import {
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block'
 import {
-  buildRateLimits,
   buildSupportedParameters,
-  formatRateLimit,
   type SupportedParameter,
 } from '../lib/mock-stats'
 import { replaceModelInPath } from '../lib/model-helpers'
 import { inferApiInfo } from '../lib/model-metadata'
-import type { PricingModel } from '../types'
+import type { PricingModel, PricingRateLimitConfig } from '../types'
 
 // ---------------------------------------------------------------------------
 // Code-sample registry
@@ -662,9 +660,34 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
 // Rate-limits table
 // ---------------------------------------------------------------------------
 
-function RateLimitsSection(props: { model: PricingModel }) {
+function formatCount(value: number) {
+  if (!Number.isFinite(value)) return ''
+  return value.toLocaleString()
+}
+
+function RateLimitsSection(props: {
+  model: PricingModel
+  rateLimitConfig?: PricingRateLimitConfig
+}) {
   const { t } = useTranslation()
-  const limits = useMemo(() => buildRateLimits(props.model), [props.model])
+  const limits = useMemo(() => {
+    const groups = (props.model.enable_groups ?? []).filter(
+      (group) => group && group !== 'auto'
+    )
+    const targets = groups.length > 0 ? groups : ['default']
+    return targets
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .map((group) => {
+        const configuredLimits = props.rateLimitConfig?.groupLimits[group]
+        return {
+          group,
+          totalCount: configuredLimits?.[0] ?? 0,
+          successCount: configuredLimits?.[1] ?? 0,
+          limited: Boolean(props.rateLimitConfig?.enabled && configuredLimits),
+        }
+      })
+  }, [props.model, props.rateLimitConfig])
 
   if (limits.length === 0) return null
 
@@ -676,9 +699,13 @@ function RateLimitsSection(props: { model: PricingModel }) {
           <TableHeader>
             <TableRow className='bg-muted/30 hover:bg-muted/30'>
               <TableHead className='h-9'>{t('Group')}</TableHead>
-              <TableHead className='h-9 text-right'>RPM</TableHead>
-              <TableHead className='h-9 text-right'>TPM</TableHead>
-              <TableHead className='h-9 text-right'>RPD</TableHead>
+              <TableHead className='h-9 text-right'>
+                {t('Total requests')}
+              </TableHead>
+              <TableHead className='h-9 text-right'>
+                {t('Successful requests')}
+              </TableHead>
+              <TableHead className='h-9 text-right'>{t('Window')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -686,13 +713,19 @@ function RateLimitsSection(props: { model: PricingModel }) {
               <TableRow key={l.group} className='hover:bg-muted/20'>
                 <TableCell className='py-2 font-mono'>{l.group}</TableCell>
                 <TableCell className='py-2 text-right font-mono'>
-                  {formatRateLimit(l.rpm)}
+                  {l.limited && l.totalCount > 0
+                    ? formatCount(l.totalCount)
+                    : t('Unlimited')}
                 </TableCell>
                 <TableCell className='py-2 text-right font-mono'>
-                  {formatRateLimit(l.tpm)}
+                  {l.limited && l.successCount > 0
+                    ? formatCount(l.successCount)
+                    : t('Unlimited')}
                 </TableCell>
                 <TableCell className='py-2 text-right font-mono'>
-                  {formatRateLimit(l.rpd)}
+                  {l.limited
+                    ? `${props.rateLimitConfig?.durationMinutes ?? 1} ${t('minutes')}`
+                    : t('Unlimited')}
                 </TableCell>
               </TableRow>
             ))}
@@ -701,7 +734,7 @@ function RateLimitsSection(props: { model: PricingModel }) {
       </div>
       <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
         {t(
-          'RPM = requests per minute, TPM = tokens per minute, RPD = requests per day. Limits apply per token group.'
+          'Limits apply only when model request rate limiting is enabled and the group has a configured rule.'
         )}
       </p>
     </section>
@@ -849,13 +882,17 @@ function AuthSection() {
 export function ModelDetailsApi(props: {
   model: PricingModel
   endpointMap: Record<string, { path?: string; method?: string }>
+  rateLimitConfig?: PricingRateLimitConfig
 }) {
   return (
     <div className='space-y-6'>
       <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
       <AuthSection />
       <SupportedParametersSection model={props.model} />
-      <RateLimitsSection model={props.model} />
+      <RateLimitsSection
+        model={props.model}
+        rateLimitConfig={props.rateLimitConfig}
+      />
     </div>
   )
 }

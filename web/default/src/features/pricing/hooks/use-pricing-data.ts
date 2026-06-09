@@ -20,6 +20,60 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useStatus } from '@/hooks/use-status'
 import { getPricing } from '../api'
+import type { PricingRateLimitConfig } from '../types'
+
+function readStatusValue(status: unknown, key: string): unknown {
+  if (!status || typeof status !== 'object') return undefined
+  const record = status as Record<string, unknown>
+  return (
+    record[key] ?? (record.data as Record<string, unknown> | undefined)?.[key]
+  )
+}
+
+function parseBooleanStatusValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.toLowerCase() === 'true'
+  return false
+}
+
+function parseNumberStatusValue(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+function parseGroupRateLimits(value: unknown): Record<string, [number, number]> {
+  if (!value) return {}
+  let parsed: unknown = value
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return {}
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {}
+  }
+
+  const limits: Record<string, [number, number]> = {}
+  for (const [group, rawLimits] of Object.entries(
+    parsed as Record<string, unknown>
+  )) {
+    if (
+      Array.isArray(rawLimits) &&
+      rawLimits.length >= 2 &&
+      typeof rawLimits[0] === 'number' &&
+      typeof rawLimits[1] === 'number'
+    ) {
+      limits[group] = [rawLimits[0], rawLimits[1]]
+    }
+  }
+  return limits
+}
 
 export function usePricingData() {
   const { status } = useStatus()
@@ -38,6 +92,21 @@ export function usePricingData() {
   const usdExchangeRate = useMemo(
     () => Math.max((status?.usd_exchange_rate as number) ?? priceRate, 0.001),
     [status?.usd_exchange_rate, priceRate]
+  )
+  const rateLimitConfig = useMemo<PricingRateLimitConfig>(
+    () => ({
+      enabled: parseBooleanStatusValue(
+        readStatusValue(status, 'ModelRequestRateLimitEnabled')
+      ),
+      durationMinutes: parseNumberStatusValue(
+        readStatusValue(status, 'ModelRequestRateLimitDurationMinutes'),
+        1
+      ),
+      groupLimits: parseGroupRateLimits(
+        readStatusValue(status, 'ModelRequestRateLimitGroup')
+      ),
+    }),
+    [status]
   )
 
   const models = useMemo(() => {
@@ -72,5 +141,6 @@ export function usePricingData() {
     refetch,
     priceRate,
     usdExchangeRate,
+    rateLimitConfig,
   }
 }

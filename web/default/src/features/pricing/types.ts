@@ -101,6 +101,12 @@ export type PricingData = {
   auto_groups: string[]
 }
 
+export type PricingRateLimitConfig = {
+  enabled: boolean
+  durationMinutes: number
+  groupLimits: Record<string, [number, number]>
+}
+
 export type TokenUnit = 'M' | 'K'
 export type PriceType =
   | 'input'
