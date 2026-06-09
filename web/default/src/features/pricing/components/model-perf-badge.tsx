@@ -22,12 +22,14 @@ import { cn } from '@/lib/utils'
 import {
   formatLatency,
   formatThroughput,
+  formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
 
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
+  request_count?: number
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -43,16 +45,29 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
 ) {
   const { t } = useTranslation()
 
-  if (!props.perf) {
-    return null
-  }
+  const hasCalls =
+    props.perf?.request_count == null || props.perf.request_count > 0
+  const successRate =
+    props.perf && hasCalls && Number.isFinite(props.perf.success_rate)
+      ? props.perf.success_rate
+      : 100
+  const avgLatencyMs = props.perf?.avg_latency_ms ?? 0
+  const avgTps = props.perf?.avg_tps ?? 0
 
-  const { avg_latency_ms, avg_tps } = props.perf
+  let statusColor = 'bg-emerald-500'
+  let statusLabel = 'Healthy'
+  if (successRate < 99) {
+    statusColor = 'bg-red-500'
+    statusLabel = 'Error'
+  } else if (successRate < 99.9) {
+    statusColor = 'bg-amber-500'
+    statusLabel = 'Warning'
+  }
 
   return (
     <div
       className={cn(
-        'hidden w-[94px] grid-cols-[38px_48px] gap-x-2 text-right tabular-nums min-[460px]:grid',
+        'hidden w-[136px] grid-cols-[38px_48px_34px] gap-x-2 text-right tabular-nums min-[460px]:grid',
         props.className
       )}
     >
@@ -61,7 +76,7 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
           {t('Latency short')}
         </div>
         <div className='text-muted-foreground/80 font-mono text-xs leading-4 whitespace-nowrap'>
-          {avg_latency_ms > 0 ? formatLatency(avg_latency_ms) : '—'}
+          {avgLatencyMs > 0 ? formatLatency(avgLatencyMs) : '—'}
         </div>
       </div>
       <div title={t('Throughput')} className='min-w-0'>
@@ -69,7 +84,21 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
           {t('Throughput short')}
         </div>
         <div className='text-muted-foreground/80 font-mono text-xs leading-4 whitespace-nowrap'>
-          {formatCompactThroughput(avg_tps)}
+          {formatCompactThroughput(avgTps)}
+        </div>
+      </div>
+      <div
+        title={`${t('Success rate')}: ${formatUptimePct(successRate)} · ${t(statusLabel)}`}
+        className='min-w-0'
+      >
+        <div className='text-muted-foreground/55 truncate text-[10px] leading-4'>
+          {t('Status short')}
+        </div>
+        <div className='flex h-4 items-center justify-end gap-1'>
+          <span className={cn('size-1.5 rounded-full', statusColor)} />
+          <span className='text-muted-foreground/80 font-mono text-[11px] leading-4 whitespace-nowrap'>
+            {Math.round(successRate)}%
+          </span>
         </div>
       </div>
     </div>

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, HeartPulse, Timer } from 'lucide-react'
+import { HeartPulse, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import {
@@ -210,7 +210,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
       ? successRates.reduce((sum, value) => sum + value, 0) /
         successRates.length
       : 0
-  const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
+  const hasIncidents = uptimeSeries.some((point) => point.incidents > 0)
   let intent: 'default' | 'warning' | 'success' = 'warning'
   if (successRate >= 99.9) {
     intent = 'success'
@@ -240,11 +240,9 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
           label={t('Success rate')}
           value={formatUptimePct(successRate)}
           hint={
-            incidentCount > 0
-              ? t('{{count}} incidents in the last 24 hours', {
-                  count: incidentCount,
-                })
-              : t('No incidents in the last 24 hours')
+            hasIncidents
+              ? t('Request failures observed in the last 24 hours')
+              : t('No request failures in the last 24 hours')
           }
           intent={intent}
         />
@@ -318,26 +316,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         <SectionHeader
           icon={HeartPulse}
           title={t('Availability (last 24h)')}
-          description={
-            incidentCount > 0
-              ? t(
-                  'Request success rate; {{incidents}} incident buckets in the last 24 hours',
-                  {
-                    incidents: incidentCount,
-                  }
-                )
-              : t('Request success rate sampled over the last 24 hours')
-          }
-          accent={
-            incidentCount > 0 ? (
-              <span className='inline-flex items-center gap-1 text-amber-600 dark:text-amber-400'>
-                <AlertTriangle className='size-3.5' />
-                {t('{{count}} incidents', {
-                  count: incidentCount,
-                })}
-              </span>
-            ) : null
-          }
+          description={t('Request success rate sampled over the last 24 hours')}
         />
         <UptimeTrendChart series={uptimeSeries} />
       </section>

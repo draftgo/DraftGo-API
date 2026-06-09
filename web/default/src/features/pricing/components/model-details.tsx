@@ -214,8 +214,8 @@ function OverviewSummaryGrid(props: { model: PricingModel }) {
   const successRate =
     successRates.length > 0
       ? successRates.reduce((sum, rate) => sum + rate, 0) / successRates.length
-      : Number.NaN
-  let successIntent: 'default' | 'warning' | 'success' = 'warning'
+      : 100
+  let successIntent: 'default' | 'warning' | 'success' = 'success'
   if (successRate >= 99.9) {
     successIntent = 'success'
   } else if (successRate >= 99) {
