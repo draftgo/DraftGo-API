@@ -45,6 +45,7 @@ import {
   type HeaderNavModulesConfig,
   serializeHeaderNavModules,
 } from './config'
+import { HeaderCustomLinksSection } from './header-custom-links-section'
 
 const headerNavSchema = z.object({
   home: z.boolean(),
@@ -62,6 +63,7 @@ type HeaderNavFormValues = z.infer<typeof headerNavSchema>
 type HeaderNavigationSectionProps = {
   config: HeaderNavModulesConfig
   initialSerialized: string
+  customNavigationInitialValue: string
 }
 
 const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
@@ -98,6 +100,7 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
 export function HeaderNavigationSection({
   config,
   initialSerialized,
+  customNavigationInitialValue,
 }: HeaderNavigationSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -294,6 +297,9 @@ export function HeaderNavigationSection({
           </div>
         </SettingsForm>
       </Form>
+      <div className='border-border/70 border-t pt-4'>
+        <HeaderCustomLinksSection initialValue={customNavigationInitialValue} />
+      </div>
     </SettingsSection>
   )
 }

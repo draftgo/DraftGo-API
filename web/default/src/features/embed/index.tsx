@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useSearch } from '@tanstack/react-router'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 import { PublicLayout } from '@/components/layout'
 import { useTheme } from '@/context/theme-provider'
 import { useStatus } from '@/hooks/use-status'
@@ -33,7 +35,9 @@ export function EmbedPage() {
 
   const { status } = useStatus()
   const { resolvedTheme } = useTheme()
+  const { auth } = useAuthStore()
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
+  const isAdmin = Boolean(auth?.user?.role && auth.user.role >= ROLE.ADMIN)
 
   const htmlContent = useMemo(() => {
     if (type !== 'html' || idx == null) return null
@@ -42,8 +46,11 @@ export function EmbedPage() {
     const customLinks = parseCustomNavLinks(customLinksRaw)
     const index = parseInt(idx, 10)
     if (isNaN(index) || index < 0 || index >= customLinks.length) return null
-    return customLinks[index]?.url || null
-  }, [type, idx, status])
+    const link = customLinks[index]
+    if (!link?.enabled) return null
+    if (link.adminOnly && !isAdmin) return null
+    return link.url || null
+  }, [type, idx, status, isAdmin])
 
   const content = type === 'html' ? htmlContent : url
 

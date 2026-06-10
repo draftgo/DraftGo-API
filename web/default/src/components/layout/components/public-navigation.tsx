@@ -24,7 +24,7 @@ import type { TopNavLink } from '../types'
 
 interface PublicNavigationProps {
   /**
-   * Custom navigation links
+   * Custom navigation
    * If not provided, will use dynamic links from backend or defaults
    */
   links?: TopNavLink[]

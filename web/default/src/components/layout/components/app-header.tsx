@@ -38,7 +38,7 @@ import { TopNav } from './top-nav'
  * <AppHeader />
  *
  * @example
- * // Custom navigation links
+ * // Custom navigation
  * <AppHeader navLinks={customLinks} />
  *
  * @example
@@ -54,7 +54,7 @@ import { TopNav } from './top-nav'
  */
 type AppHeaderProps = {
   /**
-   * Custom navigation links, uses default global navigation or dynamically generated from backend if not provided
+   * Custom navigation, uses default global navigation or dynamically generated from backend if not provided
    */
   navLinks?: TopNavLink[]
   /**

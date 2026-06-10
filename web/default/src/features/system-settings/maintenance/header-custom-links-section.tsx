@@ -37,6 +37,8 @@ import { useUpdateOption } from '../hooks/use-update-option'
 export type CustomNavLink = {
   title: string
   url: string
+  enabled: boolean
+  adminOnly: boolean
   external: boolean
   showNav: boolean
   type: 'link' | 'html'
@@ -58,6 +60,8 @@ export function parseCustomNavLinks(value: string | null | undefined): CustomNav
       .map((item) => ({
         title: item.title as string,
         url: item.url as string,
+        enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
+        adminOnly: typeof item.adminOnly === 'boolean' ? item.adminOnly : false,
         external: typeof item.external === 'boolean' ? item.external : true,
         showNav: typeof item.showNav === 'boolean' ? item.showNav : false,
         type: item.type === 'html' ? 'html' as const : 'link' as const,
@@ -89,7 +93,18 @@ export function HeaderCustomLinksSection({
   }, [initialValue])
 
   const addLink = () => {
-    setLinks((prev) => [...prev, { title: '', url: '', external: false, showNav: true, type: 'link' }])
+    setLinks((prev) => [
+      ...prev,
+      {
+        title: '',
+        url: '',
+        enabled: true,
+        adminOnly: false,
+        external: false,
+        showNav: true,
+        type: 'link',
+      },
+    ])
   }
 
   const removeLink = (index: number) => {
@@ -122,17 +137,18 @@ export function HeaderCustomLinksSection({
 
   const templateVars = [
     { token: '{key}', desc: t('API Key (auto-prefixed with sk-)') },
+    { token: '{token}', desc: t('System access token') },
     { token: '{address}', desc: t('Server address (URL encoded)') },
   ]
 
   return (
-    <SettingsSection title={t('Custom navigation links')}>
+    <SettingsSection title={t('Custom navigation')}>
       <SettingsPageFormActions
         onSave={handleSave}
         onReset={handleReset}
         isSaving={updateOption.isPending}
         resetLabel='Clear all'
-        saveLabel='Save links'
+        saveLabel='Save custom navigation'
       />
 
       <div className='space-y-3'>
@@ -157,7 +173,9 @@ export function HeaderCustomLinksSection({
             </TooltipContent>
           </Tooltip>
           <span className='text-muted-foreground text-xs'>
-            {t('URLs can use template variables like {key} and {address}')}
+            {t(
+              'URLs can use template variables like {key}, {token} and {address}'
+            )}
           </span>
         </div>
 
@@ -174,7 +192,7 @@ export function HeaderCustomLinksSection({
                   <Input
                     value={link.title}
                     onChange={(e) => updateLink(index, 'title', e.target.value)}
-                    placeholder={t('Link title')}
+                    placeholder={t('Navigation title')}
                     className='h-8 text-sm'
                   />
                 </div>
@@ -211,7 +229,7 @@ export function HeaderCustomLinksSection({
                   <Input
                     value={link.url}
                     onChange={(e) => updateLink(index, 'url', e.target.value)}
-                    placeholder='https://example.com?key={key}'
+                    placeholder='https://example.com?token={token}'
                     className='h-8 text-sm'
                   />
                 </div>
@@ -228,6 +246,30 @@ export function HeaderCustomLinksSection({
               )}
 
               <div className='flex flex-wrap items-center gap-4'>
+                <div className='flex items-center gap-2'>
+                  <Switch
+                    id={`enabled-${index}`}
+                    checked={link.enabled}
+                    onCheckedChange={(checked) =>
+                      updateLink(index, 'enabled', checked)
+                    }
+                  />
+                  <Label htmlFor={`enabled-${index}`} className='text-xs'>
+                    {t('Enabled')}
+                  </Label>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <Switch
+                    id={`adminOnly-${index}`}
+                    checked={link.adminOnly}
+                    onCheckedChange={(checked) =>
+                      updateLink(index, 'adminOnly', checked)
+                    }
+                  />
+                  <Label htmlFor={`adminOnly-${index}`} className='text-xs'>
+                    {t('Admin only')}
+                  </Label>
+                </div>
                 <div className='flex items-center gap-2'>
                   <Switch
                     id={`showNav-${index}`}
@@ -274,7 +316,7 @@ export function HeaderCustomLinksSection({
           onClick={addLink}
         >
           <PlusIcon className='size-3.5' />
-          {t('Add link')}
+          {t('Add navigation')}
         </Button>
       </div>
     </SettingsSection>

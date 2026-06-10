@@ -821,6 +821,24 @@ export function buildRateLimits(model: PricingModel): RateLimit[] {
     .slice()
     .sort((a, b) => a.localeCompare(b))
     .map((group) => {
+      if (group === 'Free') {
+        return {
+          group,
+          rpm: 15,
+          tpm: 0,
+          rpd: 0,
+        }
+      }
+
+      if (group === 'default' || group === 'Domestic') {
+        return {
+          group,
+          rpm: 0,
+          tpm: 0,
+          rpd: 0,
+        }
+      }
+
       const rand = seededRandom(baseSeed ^ hashStringToSeed(group))
       const tier = 0.6 + rand() * 1.4
       return {

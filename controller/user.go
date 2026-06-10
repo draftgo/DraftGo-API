@@ -30,6 +30,8 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+var errAccessTokenDuplicate = errors.New("access token duplicate")
+
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
@@ -311,22 +313,13 @@ func GenerateAccessToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	// get rand int 28-32
-	randI := common.GetRandomInt(4)
-	key, err := common.GenerateRandomKey(29 + randI)
-	if err != nil {
-		common.ApiErrorI18n(c, i18n.MsgGenerateFailed)
-		common.SysLog("failed to generate key: " + err.Error())
-		return
-	}
-	user.SetAccessToken(key)
 
-	if model.DB.Where("access_token = ?", user.AccessToken).First(user).RowsAffected != 0 {
+	token, err := generateAndSaveAccessToken(user)
+	if errors.Is(err, errAccessTokenDuplicate) {
 		common.ApiErrorI18n(c, i18n.MsgUuidDuplicate)
 		return
 	}
-
-	if err := user.Update(false); err != nil {
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -334,9 +327,60 @@ func GenerateAccessToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user.AccessToken,
+		"data":    token,
 	})
 	return
+}
+
+func GetCurrentAccessToken(c *gin.Context) {
+	id := c.GetInt("id")
+	user, err := model.GetUserById(id, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	token := user.GetAccessToken()
+	if token == "" {
+		token, err = generateAndSaveAccessToken(user)
+		if errors.Is(err, errAccessTokenDuplicate) {
+			common.ApiErrorI18n(c, i18n.MsgUuidDuplicate)
+			return
+		}
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    token,
+	})
+	return
+}
+
+func generateAndSaveAccessToken(user *model.User) (string, error) {
+	for i := 0; i < 5; i++ {
+		// get rand int 28-32
+		randI := common.GetRandomInt(4)
+		key, err := common.GenerateRandomKey(29 + randI)
+		if err != nil {
+			common.SysLog("failed to generate key: " + err.Error())
+			return "", err
+		}
+		if model.DB.Where("access_token = ?", key).First(&model.User{}).RowsAffected != 0 {
+			continue
+		}
+
+		user.SetAccessToken(key)
+		if err := user.Update(false); err != nil {
+			return "", err
+		}
+		return key, nil
+	}
+	return "", errAccessTokenDuplicate
 }
 
 type TransferAffQuotaRequest struct {

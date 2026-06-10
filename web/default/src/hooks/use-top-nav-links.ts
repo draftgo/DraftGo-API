@@ -16,9 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import {
+  getCurrentAccessToken,
+  resolveTemplateUrl,
+  templateNeedsAccessToken,
+} from '@/lib/template-url'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { parseCustomNavLinks } from '@/features/system-settings/maintenance/header-custom-links-section'
 import { useStatus } from '@/hooks/use-status'
@@ -59,6 +65,37 @@ export function useTopNavLinks(): TopNavLink[] {
   const docsLink: string | undefined = status?.docs_link as string | undefined
 
   const isAuthed = !!auth?.user
+  const isAdmin = Boolean(auth?.user?.role && auth.user.role >= ROLE.ADMIN)
+  const customLinksRaw = (status as Record<string, unknown> | null)
+    ?.HeaderNavCustomLinks as string | undefined
+  const [accessToken, setAccessToken] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    const needsAccessToken = templateNeedsAccessToken(customLinksRaw)
+
+    if (!needsAccessToken) {
+      setAccessToken('')
+      return
+    }
+
+    if (!isAuthed) {
+      setAccessToken('false')
+      return
+    }
+
+    setAccessToken('false')
+    getCurrentAccessToken().then((token) => {
+      if (mounted) {
+        setAccessToken(token || 'false')
+      }
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [customLinksRaw, isAuthed])
 
   const links: TopNavLink[] = []
 
@@ -100,14 +137,17 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
-  // Custom links from HeaderNavCustomLinks
-  const customLinksRaw = (status as Record<string, unknown> | null)
-    ?.HeaderNavCustomLinks as string | undefined
   const customLinks = parseCustomNavLinks(customLinksRaw)
 
   for (const link of customLinks) {
     if (!link.title.trim() || !link.url.trim()) continue
-    const resolvedUrl = resolveNavLinkUrl(link.url, status)
+    if (!link.enabled) continue
+    if (link.adminOnly && !isAdmin) continue
+    const resolvedUrl = resolveTemplateUrl(
+      link.url,
+      status,
+      templateNeedsAccessToken(link.url) ? accessToken || 'false' : accessToken
+    )
 
     if (link.showNav) {
       if (link.type === 'html') {
@@ -144,37 +184,4 @@ export function useTopNavLinks(): TopNavLink[] {
   }
 
   return links
-}
-
-function resolveNavLinkUrl(
-  template: string,
-  status: Record<string, unknown> | null | undefined
-): string {
-  let url = template
-  const serverAddress = (status?.server_address as string) || ''
-
-  if (url.includes('{address}')) {
-    url = url.split('{address}').join(encodeURIComponent(serverAddress))
-  }
-
-  if (url.includes('{key}')) {
-    let apiKey = ''
-    try {
-      const stored = localStorage.getItem('user')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        const token = parsed?.token || parsed?.key || ''
-        apiKey = token
-          ? token.startsWith('sk-')
-            ? token
-            : `sk-${token}`
-          : ''
-      }
-    } catch {
-      /* empty */
-    }
-    url = url.split('{key}').join(apiKey)
-  }
-
-  return url
 }

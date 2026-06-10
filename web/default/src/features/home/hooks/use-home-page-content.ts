@@ -19,6 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import i18next from 'i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
+import {
+  getCurrentAccessToken,
+  resolveTemplateUrl,
+  templateNeedsAccessToken,
+} from '@/lib/template-url'
+import { useStatus } from '@/hooks/use-status'
 import { getHomePageContent } from '../api'
 import type { HomePageContentResult } from '../types'
 
@@ -29,8 +36,12 @@ const STORAGE_KEY = 'home_page_content'
  * Supports both Markdown/HTML content and iframe URLs
  */
 export function useHomePageContent(): HomePageContentResult {
+  const { auth } = useAuthStore()
+  const { status } = useStatus()
+  const [rawContent, setRawContent] = useState<string>('')
   const [content, setContent] = useState<string>('')
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isResolved, setIsResolved] = useState(true)
 
   useEffect(() => {
     let mounted = true
@@ -39,7 +50,7 @@ export function useHomePageContent(): HomePageContentResult {
       // Load from localStorage first for immediate display
       const cached = localStorage.getItem(STORAGE_KEY)
       if (cached && mounted) {
-        setContent(cached)
+        setRawContent(cached)
       }
 
       try {
@@ -49,11 +60,11 @@ export function useHomePageContent(): HomePageContentResult {
         if (!mounted) return
 
         if (success && data) {
-          setContent(data)
+          setRawContent(data)
           localStorage.setItem(STORAGE_KEY, data)
         } else {
           // Clear content if API returns empty
-          setContent('')
+          setRawContent('')
           localStorage.removeItem(STORAGE_KEY)
         }
       } catch (error) {
@@ -75,13 +86,53 @@ export function useHomePageContent(): HomePageContentResult {
     }
   }, [])
 
-  let isUrl = false
-  try {
-    const url = new URL(content)
-    isUrl = url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    // not a URL
-  }
+  useEffect(() => {
+    let mounted = true
 
-  return { content, isLoaded, isUrl }
+    const resolveContent = async () => {
+      const isUrl = isHttpUrl(rawContent)
+      const needsAccessToken = isUrl && templateNeedsAccessToken(rawContent)
+
+      if (!needsAccessToken) {
+        setContent(
+          isUrl ? resolveTemplateUrl(rawContent, status, '') : rawContent
+        )
+        setIsResolved(true)
+        return
+      }
+
+      if (!auth.user) {
+        setContent(resolveTemplateUrl(rawContent, status, 'false'))
+        setIsResolved(true)
+        return
+      }
+
+      setIsResolved(false)
+
+      const token = await getCurrentAccessToken()
+      if (!mounted) return
+
+      setContent(resolveTemplateUrl(rawContent, status, token || 'false'))
+      setIsResolved(true)
+    }
+
+    resolveContent()
+
+    return () => {
+      mounted = false
+    }
+  }, [auth.user, rawContent, status])
+
+  const isUrl = isHttpUrl(content)
+
+  return { content, isLoaded: isLoaded && isResolved, isUrl }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
