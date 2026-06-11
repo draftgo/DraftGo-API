@@ -49,7 +49,33 @@ export type PerfModelSummary = {
   success_rate: number
   avg_tps: number
   request_count?: number
+  availability_pct?: number
+  availability_status?: AvailabilityStatus
+  available_channels?: number
+  total_channels?: number
+  tested_channels?: number
+  fresh_tested_channels?: number
+  last_test_time?: number
+  avg_test_latency_ms?: number
+  auto_test_enabled?: boolean
+  auto_test_interval_minutes?: number
+  health_source?: HealthSource
 }
+
+export type AvailabilityStatus =
+  | 'healthy'
+  | 'warning'
+  | 'stale'
+  | 'degraded'
+  | 'down'
+  | 'unknown'
+
+export type HealthSource =
+  | 'mixed'
+  | 'traffic'
+  | 'scheduled_test'
+  | 'channel_status'
+  | 'none'
 
 export type PerfSummaryAllData = {
   success: boolean

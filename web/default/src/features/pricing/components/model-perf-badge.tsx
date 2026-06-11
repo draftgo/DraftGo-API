@@ -24,12 +24,27 @@ import {
   formatThroughput,
   formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
+import type {
+  AvailabilityStatus,
+  HealthSource,
+} from '@/features/performance-metrics/types'
 
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
   request_count?: number
+  availability_pct?: number
+  availability_status?: AvailabilityStatus
+  available_channels?: number
+  total_channels?: number
+  tested_channels?: number
+  fresh_tested_channels?: number
+  last_test_time?: number
+  avg_test_latency_ms?: number
+  auto_test_enabled?: boolean
+  auto_test_interval_minutes?: number
+  health_source?: HealthSource
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -40,29 +55,61 @@ function formatCompactThroughput(tps: number): string {
   return formatThroughput(tps).replace(' t/s', 'tps')
 }
 
+export function getAvailabilityConfig(
+  status: AvailabilityStatus | undefined,
+  t: (key: string) => string
+) {
+  switch (status) {
+    case 'healthy':
+      return { color: 'bg-emerald-500', label: t('Healthy') }
+    case 'warning':
+      return { color: 'bg-amber-500', label: t('Warning') }
+    case 'stale':
+      return { color: 'bg-sky-500', label: t('Stale') }
+    case 'degraded':
+      return { color: 'bg-orange-500', label: t('Degraded') }
+    case 'down':
+      return { color: 'bg-red-500', label: t('Unavailable') }
+    default:
+      return { color: 'bg-muted-foreground/40', label: t('No data') }
+  }
+}
+
+export function getHealthSourceLabel(
+  source: HealthSource | undefined,
+  t: (key: string) => string
+) {
+  switch (source) {
+    case 'mixed':
+      return t('Traffic + scheduled tests')
+    case 'traffic':
+      return t('Traffic')
+    case 'scheduled_test':
+      return t('Scheduled tests')
+    case 'channel_status':
+      return t('Channel status')
+    default:
+      return t('No data')
+  }
+}
+
 export const ModelPerfBadge = memo(function ModelPerfBadge(
   props: ModelPerfBadgeProps
 ) {
   const { t } = useTranslation()
 
-  const hasCalls =
-    props.perf?.request_count == null || props.perf.request_count > 0
+  const hasCalls = (props.perf?.request_count ?? 0) > 0
   const successRate =
     props.perf && hasCalls && Number.isFinite(props.perf.success_rate)
       ? props.perf.success_rate
-      : 100
-  const avgLatencyMs = props.perf?.avg_latency_ms ?? 0
+      : (props.perf?.availability_pct ?? 100)
+  const avgLatencyMs =
+    props.perf?.avg_latency_ms || props.perf?.avg_test_latency_ms || 0
   const avgTps = props.perf?.avg_tps ?? 0
-
-  let statusColor = 'bg-emerald-500'
-  let statusLabel = 'Healthy'
-  if (successRate < 99) {
-    statusColor = 'bg-red-500'
-    statusLabel = 'Error'
-  } else if (successRate < 99.9) {
-    statusColor = 'bg-amber-500'
-    statusLabel = 'Warning'
-  }
+  const availability = getAvailabilityConfig(props.perf?.availability_status, t)
+  const sourceLabel = getHealthSourceLabel(props.perf?.health_source, t)
+  const availableChannels = props.perf?.available_channels ?? 0
+  const totalChannels = props.perf?.total_channels ?? 0
 
   return (
     <div
@@ -88,16 +135,22 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
         </div>
       </div>
       <div
-        title={`${t('Success rate')}: ${formatUptimePct(successRate)} · ${t(statusLabel)}`}
+        title={`${t('Availability')}: ${
+          Number.isFinite(successRate)
+            ? formatUptimePct(successRate)
+            : formatUptimePct(100)
+        } · ${availability.label} · ${sourceLabel} · ${availableChannels}/${totalChannels} ${t('channels')}`}
         className='min-w-0'
       >
         <div className='text-muted-foreground/55 truncate text-[10px] leading-4'>
           {t('Status short')}
         </div>
         <div className='flex h-4 items-center justify-end gap-1'>
-          <span className={cn('size-1.5 rounded-full', statusColor)} />
+          <span className={cn('size-1.5 rounded-full', availability.color)} />
           <span className='text-muted-foreground/80 font-mono text-[11px] leading-4 whitespace-nowrap'>
-            {Math.round(successRate)}%
+            {Number.isFinite(successRate)
+              ? `${Math.round(successRate)}%`
+              : '100%'}
           </span>
         </div>
       </div>

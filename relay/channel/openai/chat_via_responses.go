@@ -58,6 +58,9 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	if !usageHasTokens(responsesResp.Usage) && !responsesResponseHasOutput(&responsesResp) {
+		return nil, newEmptyResponseError()
+	}
 
 	chatId := helper.GetResponseID(c)
 	chatResp, usage, err := service.ResponsesResponseToChatCompletionsResponse(&responsesResp, chatId)
@@ -475,6 +478,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				}
 			}
 
+			if usageText.Len() == 0 && !sawToolCall && !usageHasTokens(usage) {
+				break
+			}
 			if !sendStartIfNeeded() {
 				sr.Stop(streamErr)
 				return
@@ -513,6 +519,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	if streamErr != nil {
 		return nil, streamErr
+	}
+
+	if usageText.Len() == 0 && !sawToolCall && !usageHasTokens(usage) {
+		return nil, newEmptyResponseError()
 	}
 
 	if usage.TotalTokens == 0 {

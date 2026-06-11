@@ -17,9 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
+import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
   LoadingSkeleton,
   EmptyState,
@@ -28,8 +30,10 @@ import {
   PricingSidebar,
   PricingToolbar,
   ModelCardGrid,
+  ModelHealthBoard,
   ModelDetailsDrawer,
 } from './components'
+import type { ModelPerfBadgeData } from './components/model-perf-badge'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
@@ -109,6 +113,21 @@ export function Pricing() {
     clearSearch()
   }, [clearFilters, clearSearch])
 
+  const perfQuery = useQuery({
+    queryKey: ['perf-metrics-summary', 24],
+    queryFn: () => getPerfMetricsSummary(24),
+    staleTime: 60 * 1000,
+    retry: false,
+  })
+
+  const perfMap = useMemo(() => {
+    const map = new Map<string, ModelPerfBadgeData>()
+    for (const model of perfQuery.data?.data?.models ?? []) {
+      map.set(model.model_name, model)
+    }
+    return map
+  }, [perfQuery.data])
+
   const renderPricingContent = () => {
     if (filteredModels.length === 0) {
       return (
@@ -129,6 +148,17 @@ export function Pricing() {
           usdExchangeRate={usdExchangeRate}
           tokenUnit={tokenUnit}
           showRechargePrice={showRechargePrice}
+          perfMap={perfMap}
+        />
+      )
+    }
+
+    if (viewMode === VIEW_MODES.HEALTH) {
+      return (
+        <ModelHealthBoard
+          models={filteredModels}
+          perfMap={perfMap}
+          onModelClick={handleModelClick}
         />
       )
     }

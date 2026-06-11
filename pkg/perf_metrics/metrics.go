@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 )
 
@@ -137,6 +138,20 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 	if err != nil {
 		return SummaryAllResult{}, err
 	}
+	monitorSetting := operation_setting.GetMonitorSetting()
+	autoTestIntervalMinutes := monitorSetting.AutoTestChannelMinutes
+	if autoTestIntervalMinutes <= 0 {
+		autoTestIntervalMinutes = 10
+	}
+	freshAfter := int64(math.Round(autoTestIntervalMinutes * 2 * 60))
+	if freshAfter < 60 {
+		freshAfter = 60
+	}
+	freshCutoff := endTs - freshAfter
+	availability, err := model.GetModelAvailabilitySummaries(freshCutoff)
+	if err != nil {
+		return SummaryAllResult{}, err
+	}
 
 	totals := map[string]counters{}
 	for _, row := range rows {
@@ -173,30 +188,117 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		return true
 	})
 
-	models := make([]ModelSummary, 0, len(totals))
-	for name, total := range totals {
-		if total.requestCount == 0 {
-			continue
-		}
-		avgLatency := total.totalLatencyMs / total.requestCount
-		successRate := float64(total.successCount) / float64(total.requestCount) * 100
-		avgTps := 0.0
-		if total.generationMs > 0 {
-			avgTps = float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
-		}
-		models = append(models, ModelSummary{
-			ModelName:    name,
-			AvgLatencyMs: avgLatency,
-			SuccessRate:  math.Round(successRate*100) / 100,
-			AvgTps:       math.Round(avgTps*100) / 100,
-			RequestCount: total.requestCount,
-		})
+	modelNames := make(map[string]struct{}, len(totals)+len(availability))
+	for name := range totals {
+		modelNames[name] = struct{}{}
+	}
+	for name := range availability {
+		modelNames[name] = struct{}{}
+	}
+
+	models := make([]ModelSummary, 0, len(modelNames))
+	for name := range modelNames {
+		total := totals[name]
+		availabilitySummary := availability[name]
+		models = append(models, buildModelSummary(name, total, availabilitySummary, monitorSetting.AutoTestChannelEnabled, autoTestIntervalMinutes, freshCutoff))
 	}
 	sort.Slice(models, func(i, j int) bool {
+		if models[i].AvailabilityStatus != models[j].AvailabilityStatus {
+			return availabilityStatusRank(models[i].AvailabilityStatus) < availabilityStatusRank(models[j].AvailabilityStatus)
+		}
 		return models[i].RequestCount > models[j].RequestCount
 	})
 
 	return SummaryAllResult{Models: models}, nil
+}
+
+func buildModelSummary(name string, total counters, availability model.ModelAvailabilitySummary, autoTestEnabled bool, autoTestIntervalMinutes float64, freshCutoff int64) ModelSummary {
+	summary := ModelSummary{
+		ModelName:              name,
+		RequestCount:           total.requestCount,
+		AvailableChannels:      availability.AvailableChannels,
+		TotalChannels:          availability.TotalChannels,
+		TestedChannels:         availability.TestedChannels,
+		FreshTestedChannels:    availability.FreshTestedChannels,
+		LastTestTime:           availability.LastTestTime,
+		AvgTestLatencyMs:       availability.AvgTestLatencyMs,
+		AutoTestEnabled:        autoTestEnabled,
+		AutoTestIntervalMinute: autoTestIntervalMinutes,
+	}
+	if total.requestCount > 0 {
+		summary.AvgLatencyMs = total.totalLatencyMs / total.requestCount
+		successRate := float64(total.successCount) / float64(total.requestCount) * 100
+		summary.SuccessRate = math.Round(successRate*100) / 100
+		if total.generationMs > 0 {
+			avgTps := float64(total.outputTokens) / (float64(total.generationMs) / 1000.0)
+			summary.AvgTps = math.Round(avgTps*100) / 100
+		}
+	}
+	if availability.TotalChannels > 0 {
+		availabilityPct := float64(availability.AvailableChannels) / float64(availability.TotalChannels) * 100
+		summary.AvailabilityPct = math.Round(availabilityPct*100) / 100
+	}
+	summary.HealthSource = modelHealthSource(summary)
+	summary.AvailabilityStatus = modelAvailabilityStatus(summary, autoTestEnabled, freshCutoff)
+	return summary
+}
+
+func modelHealthSource(summary ModelSummary) string {
+	hasTraffic := summary.RequestCount > 0
+	hasFreshTest := summary.FreshTestedChannels > 0
+	switch {
+	case hasTraffic && hasFreshTest:
+		return "mixed"
+	case hasTraffic:
+		return "traffic"
+	case hasFreshTest:
+		return "scheduled_test"
+	case summary.TotalChannels > 0:
+		return "channel_status"
+	default:
+		return "none"
+	}
+}
+
+func modelAvailabilityStatus(summary ModelSummary, autoTestEnabled bool, freshCutoff int64) string {
+	if summary.TotalChannels == 0 {
+		return "unknown"
+	}
+	if summary.AvailableChannels == 0 {
+		return "down"
+	}
+	if summary.RequestCount > 0 && summary.SuccessRate < 99 {
+		return "degraded"
+	}
+	if autoTestEnabled && summary.TestedChannels > 0 && summary.LastTestTime < freshCutoff {
+		return "stale"
+	}
+	if summary.AvailabilityPct < 50 {
+		return "degraded"
+	}
+	if summary.RequestCount > 0 && summary.SuccessRate < 99.9 {
+		return "warning"
+	}
+	return "healthy"
+}
+
+func availabilityStatusRank(status string) int {
+	switch status {
+	case "down":
+		return 0
+	case "degraded":
+		return 1
+	case "stale":
+		return 2
+	case "warning":
+		return 3
+	case "unknown":
+		return 4
+	case "healthy":
+		return 5
+	default:
+		return 6
+	}
 }
 
 func allowedGroupSet(groups []string) map[string]struct{} {

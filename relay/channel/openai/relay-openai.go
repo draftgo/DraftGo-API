@@ -126,9 +126,11 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if lastStreamData != "" {
-			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-				common.SysLog("error handling stream format: " + err.Error())
-				sr.Error(err)
+			if chatStreamDataHasOutput(lastStreamData) || responseTextBuilder.Len() > 0 || toolCount > 0 {
+				if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
+					common.SysLog("error handling stream format: " + err.Error())
+					sr.Error(err)
+				}
 			}
 		}
 		if len(data) > 0 {
@@ -172,8 +174,14 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
 		if shouldSendLastResp {
-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+			if chatStreamDataHasOutput(lastStreamData) || responseTextBuilder.Len() > 0 || toolCount > 0 || containStreamUsage {
+				_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+			}
 		}
+	}
+
+	if !containStreamUsage && responseTextBuilder.Len() == 0 && toolCount == 0 {
+		return nil, newEmptyResponseError()
 	}
 
 	if !containStreamUsage {
@@ -220,6 +228,10 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	if !usageHasTokens(&simpleResponse.Usage) && !openAITextResponseHasOutput(&simpleResponse) {
+		return nil, newEmptyResponseError()
 	}
 
 	for _, choice := range simpleResponse.Choices {

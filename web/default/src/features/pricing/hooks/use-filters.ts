@@ -44,6 +44,9 @@ type FilterState = {
 }
 
 function normalizeViewMode(value: unknown): ViewMode {
+  if (value === VIEW_MODES.HEALTH) {
+    return VIEW_MODES.HEALTH
+  }
   if (value === VIEW_MODES.TABLE) {
     return VIEW_MODES.TABLE
   }

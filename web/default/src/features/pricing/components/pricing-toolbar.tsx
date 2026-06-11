@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useState } from 'react'
-import { ArrowUpDown, Check, Filter, Grid2X2, Table2 } from 'lucide-react'
+import {
+  Activity,
+  ArrowUpDown,
+  Check,
+  Filter,
+  Grid2X2,
+  Table2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -262,6 +269,11 @@ export function PricingToolbar(props: PricingToolbarProps) {
                 value: VIEW_MODES.TABLE,
                 icon: Table2,
                 tooltip: t('Table view'),
+              },
+              {
+                value: VIEW_MODES.HEALTH,
+                icon: Activity,
+                tooltip: t('Health board'),
               },
             ]}
             value={props.viewMode}

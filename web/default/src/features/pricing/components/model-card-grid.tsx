@@ -34,6 +34,7 @@ export interface ModelCardGridProps {
   usdExchangeRate?: number
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
+  perfMap?: Map<string, ModelPerfBadgeData>
 }
 
 export function ModelCardGrid(props: ModelCardGridProps) {
@@ -49,6 +50,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
     queryFn: () => getPerfMetricsSummary(24),
     staleTime: 60 * 1000,
     retry: false,
+    enabled: !props.perfMap,
   })
 
   const pagedModels = useMemo(() => {
@@ -57,12 +59,15 @@ export function ModelCardGrid(props: ModelCardGridProps) {
   }, [currentPage, pageSize, props.models])
 
   const perfMap = useMemo(() => {
+    if (props.perfMap) {
+      return props.perfMap
+    }
     const map = new Map<string, ModelPerfBadgeData>()
     for (const model of perfQuery.data?.data?.models ?? []) {
       map.set(model.model_name, model)
     }
     return map
-  }, [perfQuery.data])
+  }, [perfQuery.data, props.perfMap])
 
   if (props.models.length === 0) {
     return null

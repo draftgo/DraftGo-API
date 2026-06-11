@@ -3,6 +3,8 @@ package model
 import (
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -66,6 +68,89 @@ type PerfMetricSummary struct {
 	TotalLatencyMs int64  `json:"total_latency_ms"`
 	OutputTokens   int64  `json:"output_tokens"`
 	GenerationMs   int64  `json:"generation_ms"`
+}
+
+type ModelAvailabilitySummary struct {
+	ModelName           string
+	TotalChannels       int
+	AvailableChannels   int
+	TestedChannels      int
+	FreshTestedChannels int
+	LastTestTime        int64
+	AvgTestLatencyMs    int64
+}
+
+type modelAvailabilityRow struct {
+	ModelName    string
+	ChannelId    int
+	AbilityOn    bool
+	Status       int
+	TestTime     int64
+	ResponseTime int
+}
+
+func GetModelAvailabilitySummaries(freshCutoff int64) (map[string]ModelAvailabilitySummary, error) {
+	var rows []modelAvailabilityRow
+	err := DB.Table("abilities").
+		Select("abilities.model as model_name, abilities.channel_id, abilities.enabled as ability_on, channels.status, channels.test_time, channels.response_time").
+		Joins("left join channels on abilities.channel_id = channels.id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	type channelState struct {
+		available    bool
+		testTime     int64
+		responseTime int
+	}
+	byModel := make(map[string]map[int]channelState)
+	for _, row := range rows {
+		if row.ModelName == "" || row.ChannelId == 0 {
+			continue
+		}
+		if _, ok := byModel[row.ModelName]; !ok {
+			byModel[row.ModelName] = make(map[int]channelState)
+		}
+		state := byModel[row.ModelName][row.ChannelId]
+		if row.AbilityOn && row.Status == common.ChannelStatusEnabled {
+			state.available = true
+		}
+		if row.TestTime > state.testTime {
+			state.testTime = row.TestTime
+			state.responseTime = row.ResponseTime
+		}
+		byModel[row.ModelName][row.ChannelId] = state
+	}
+
+	result := make(map[string]ModelAvailabilitySummary, len(byModel))
+	for modelName, channels := range byModel {
+		summary := ModelAvailabilitySummary{ModelName: modelName}
+		var latencySum int64
+		for _, state := range channels {
+			summary.TotalChannels++
+			if state.available {
+				summary.AvailableChannels++
+			}
+			if state.testTime > 0 {
+				summary.TestedChannels++
+				if freshCutoff > 0 && state.testTime >= freshCutoff {
+					summary.FreshTestedChannels++
+				}
+				if state.testTime > summary.LastTestTime {
+					summary.LastTestTime = state.testTime
+				}
+				if state.responseTime > 0 {
+					latencySum += int64(state.responseTime)
+				}
+			}
+		}
+		if summary.TestedChannels > 0 && latencySum > 0 {
+			summary.AvgTestLatencyMs = latencySum / int64(summary.TestedChannels)
+		}
+		result[modelName] = summary
+	}
+	return result, nil
 }
 
 func GetPerfMetricsSummaryAll(startTs int64, endTs int64, groups []string) ([]PerfMetricSummary, error) {

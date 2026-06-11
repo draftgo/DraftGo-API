@@ -48,11 +48,22 @@ type QueryResult struct {
 }
 
 type ModelSummary struct {
-	ModelName    string  `json:"model_name"`
-	AvgLatencyMs int64   `json:"avg_latency_ms"`
-	SuccessRate  float64 `json:"success_rate"`
-	AvgTps       float64 `json:"avg_tps"`
-	RequestCount int64   `json:"-"`
+	ModelName              string  `json:"model_name"`
+	AvgLatencyMs           int64   `json:"avg_latency_ms"`
+	SuccessRate            float64 `json:"success_rate"`
+	AvgTps                 float64 `json:"avg_tps"`
+	RequestCount           int64   `json:"request_count"`
+	AvailabilityPct        float64 `json:"availability_pct"`
+	AvailabilityStatus     string  `json:"availability_status"`
+	AvailableChannels      int     `json:"available_channels"`
+	TotalChannels          int     `json:"total_channels"`
+	TestedChannels         int     `json:"tested_channels"`
+	FreshTestedChannels    int     `json:"fresh_tested_channels"`
+	LastTestTime           int64   `json:"last_test_time"`
+	AvgTestLatencyMs       int64   `json:"avg_test_latency_ms"`
+	AutoTestEnabled        bool    `json:"auto_test_enabled"`
+	AutoTestIntervalMinute float64 `json:"auto_test_interval_minutes"`
+	HealthSource           string  `json:"health_source"`
 }
 
 type SummaryAllResult struct {
