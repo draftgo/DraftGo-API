@@ -32,21 +32,19 @@ import type { BundledLanguage } from 'shiki/bundle/web'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   CodeBlock,
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block'
 import {
+  StaticDataTable,
+  staticDataTableClassNames as tableStyles,
+} from '@/components/data-table'
+import {
+  buildRateLimits,
   buildSupportedParameters,
+  formatRateLimit,
   type SupportedParameter,
 } from '../lib/mock-stats'
 import { replaceModelInPath } from '../lib/model-helpers'
@@ -568,53 +566,62 @@ function SupportedParametersSection(props: { model: PricingModel }) {
   return (
     <section>
       <SectionTitle icon={Sigma}>{t('Supported parameters')}</SectionTitle>
-      <div className='border-border/60 overflow-hidden rounded-lg border'>
-        <Table>
-          <TableHeader>
-            <TableRow className='bg-muted/30 hover:bg-muted/30'>
-              <TableHead className='h-9 w-44'>{t('Parameter')}</TableHead>
-              <TableHead className='h-9 w-24'>{t('Type')}</TableHead>
-              <TableHead className='h-9 w-32'>{t('Default / range')}</TableHead>
-              <TableHead className='h-9'>{t('Description')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {params.map((p) => (
-              <TableRow key={p.name} className='hover:bg-muted/20'>
-                <TableCell className='py-2 align-top'>
-                  <div className='flex items-center gap-1.5'>
-                    <code className='font-mono text-sm font-medium'>
-                      {p.name}
-                    </code>
-                    {p.required && (
-                      <Badge
-                        variant='outline'
-                        className='h-6 border-rose-500/40 px-2 text-sm text-rose-600 dark:text-rose-400'
-                      >
-                        {t('required')}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className='py-2 align-top'>
+      <StaticDataTable
+        className={tableStyles.sectionContainer}
+        headerRowClassName={tableStyles.mutedHeaderRow}
+        data={params}
+        getRowKey={(param) => param.name}
+        getRowClassName={() => 'hover:bg-muted/20'}
+        columns={[
+          {
+            id: 'parameter',
+            header: t('Parameter'),
+            className: 'h-9 w-44',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => (
+              <div className='flex items-center gap-1.5'>
+                <code className='font-mono text-sm font-medium'>{p.name}</code>
+                {p.required && (
                   <Badge
-                    variant='secondary'
-                    className='h-7 rounded-full px-2.5 font-mono text-sm font-normal'
+                    variant='outline'
+                    className='h-6 border-rose-500/40 px-2 text-sm text-rose-600 dark:text-rose-400'
                   >
-                    {p.type}
+                    {t('required')}
                   </Badge>
-                </TableCell>
-                <TableCell className='py-2 align-top'>
-                  <ParamRangeCell param={p} />
-                </TableCell>
-                <TableCell className='text-muted-foreground py-2 align-top'>
-                  {t(p.descriptionKey)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: 'type',
+            header: t('Type'),
+            className: 'h-9 w-24',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => (
+              <Badge
+                variant='secondary'
+                className='h-7 rounded-full px-2.5 font-mono text-sm font-normal'
+              >
+                {p.type}
+              </Badge>
+            ),
+          },
+          {
+            id: 'range',
+            header: t('Default / range'),
+            className: 'h-9 w-32',
+            cellClassName: tableStyles.topCell,
+            cell: (p) => <ParamRangeCell param={p} />,
+          },
+          {
+            id: 'description',
+            header: t('Description'),
+            className: 'h-9',
+            cellClassName: tableStyles.topMutedCell,
+            cell: (p) => t(p.descriptionKey),
+          },
+        ]}
+      />
     </section>
   )
 }
@@ -660,81 +667,55 @@ function ParamRangeCell(props: { param: SupportedParameter }) {
 // Rate-limits table
 // ---------------------------------------------------------------------------
 
-function formatCount(value: number) {
-  if (!Number.isFinite(value)) return ''
-  return value.toLocaleString()
-}
-
-function RateLimitsSection(props: {
-  model: PricingModel
-  rateLimitConfig?: PricingRateLimitConfig
-}) {
+function RateLimitsSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
-  const limits = useMemo(() => {
-    const groups = (props.model.enable_groups ?? []).filter(
-      (group) => group && group !== 'auto'
-    )
-    const targets = groups.length > 0 ? groups : ['default']
-    return targets
-      .slice()
-      .sort((a, b) => a.localeCompare(b))
-      .map((group) => {
-        const configuredLimits = props.rateLimitConfig?.groupLimits[group]
-        return {
-          group,
-          totalCount: configuredLimits?.[0] ?? 0,
-          successCount: configuredLimits?.[1] ?? 0,
-          limited: Boolean(props.rateLimitConfig?.enabled && configuredLimits),
-        }
-      })
-  }, [props.model, props.rateLimitConfig])
+  const limits = useMemo(() => buildRateLimits(props.model), [props.model])
 
   if (limits.length === 0) return null
 
   return (
     <section>
       <SectionTitle icon={Gauge}>{t('Rate limits')}</SectionTitle>
-      <div className='border-border/60 overflow-hidden rounded-lg border'>
-        <Table>
-          <TableHeader>
-            <TableRow className='bg-muted/30 hover:bg-muted/30'>
-              <TableHead className='h-9'>{t('Group')}</TableHead>
-              <TableHead className='h-9 text-right'>
-                {t('Total requests')}
-              </TableHead>
-              <TableHead className='h-9 text-right'>
-                {t('Successful requests')}
-              </TableHead>
-              <TableHead className='h-9 text-right'>{t('Window')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {limits.map((l) => (
-              <TableRow key={l.group} className='hover:bg-muted/20'>
-                <TableCell className='py-2 font-mono'>{l.group}</TableCell>
-                <TableCell className='py-2 text-right font-mono'>
-                  {l.limited && l.totalCount > 0
-                    ? formatCount(l.totalCount)
-                    : t('Unlimited')}
-                </TableCell>
-                <TableCell className='py-2 text-right font-mono'>
-                  {l.limited && l.successCount > 0
-                    ? formatCount(l.successCount)
-                    : t('Unlimited')}
-                </TableCell>
-                <TableCell className='py-2 text-right font-mono'>
-                  {l.limited
-                    ? `${props.rateLimitConfig?.durationMinutes ?? 1} ${t('minutes')}`
-                    : t('Unlimited')}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <StaticDataTable
+        className={tableStyles.sectionContainer}
+        headerRowClassName={tableStyles.mutedHeaderRow}
+        data={limits}
+        getRowKey={(limit) => limit.group}
+        getRowClassName={() => 'hover:bg-muted/20'}
+        columns={[
+          {
+            id: 'group',
+            header: t('Group'),
+            className: 'h-9',
+            cellClassName: 'py-2 font-mono',
+            cell: (limit) => limit.group,
+          },
+          {
+            id: 'rpm',
+            header: 'RPM',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.rpm),
+          },
+          {
+            id: 'tpm',
+            header: 'TPM',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.tpm),
+          },
+          {
+            id: 'rpd',
+            header: 'RPD',
+            className: 'h-9 text-right',
+            cellClassName: tableStyles.topNumericCell,
+            cell: (limit) => formatRateLimit(limit.rpd),
+          },
+        ]}
+      />
       <p className='text-muted-foreground mt-2 text-[11px] leading-relaxed'>
         {t(
-          'Limits apply only when model request rate limiting is enabled and the group has a configured rule.'
+          'RPM = requests per minute, TPM = tokens per minute, RPD = requests per day. Limits apply per token group.'
         )}
       </p>
     </section>
@@ -889,10 +870,7 @@ export function ModelDetailsApi(props: {
       <CodeSamplesSection model={props.model} endpointMap={props.endpointMap} />
       <AuthSection />
       <SupportedParametersSection model={props.model} />
-      <RateLimitsSection
-        model={props.model}
-        rateLimitConfig={props.rateLimitConfig}
-      />
+      <RateLimitsSection model={props.model} />
     </div>
   )
 }
