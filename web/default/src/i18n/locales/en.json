@@ -1822,7 +1822,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For private deployments, format: https://fastgpt.run/api/openapi": "For private deployments, format: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Force a syntactically valid JSON response",
@@ -3767,7 +3767,6 @@
     "Slug must be less than 100 characters": "Slug must be less than 100 characters",
     "Smallest USD amount users can recharge (Epay)": "Smallest USD amount users can recharge (Epay)",
     "Slow text request threshold (seconds)": "Slow text request threshold (seconds)",
-    "Streaming text slow request threshold (seconds)": "Streaming text slow request threshold (seconds)",
     "Non-streaming text slow request threshold (seconds)": "Non-streaming text slow request threshold (seconds)",
     "SMTP Email": "SMTP Email",
     "SMTP Host": "SMTP Host",
@@ -4626,6 +4625,8 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Streaming first-token timeout (seconds)": "Streaming first-token timeout (seconds)",
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule."
   }
 }

@@ -3827,6 +3827,10 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "流式首字超时": "Streaming first-token timeout",
+    "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道，0 表示关闭": "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.",
+    "非流式文本慢请求阈值": "Non-streaming text slow request threshold",
+    "仅统计非流式文本请求，按总耗时判断，0 表示关闭": "Only non-streaming text requests are counted. Uses total duration. 0 disables this rule."
   }
 }

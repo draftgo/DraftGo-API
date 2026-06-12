@@ -55,7 +55,6 @@ func InitOptionMap() {
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelSlowRequestThreshold, 'f', -1, 64)
-	common.OptionMap["ChannelStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelStreamSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelNonStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelNonStreamSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["StreamFirstResponseTimeoutSeconds"] = strconv.FormatFloat(common.StreamFirstResponseTimeoutSeconds, 'f', -1, 64)
 	common.OptionMap["ChannelDisableWindowMinutes"] = strconv.Itoa(common.ChannelDisableWindowMinutes)
@@ -193,7 +192,6 @@ func InitOptionMap() {
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
 	hasLegacySlowRequestThreshold := false
-	hasStreamSlowRequestThreshold := false
 	hasNonStreamSlowRequestThreshold := false
 	legacySlowRequestThreshold := ""
 
@@ -202,8 +200,6 @@ func loadOptionsFromDatabase() {
 		case "ChannelSlowRequestThreshold":
 			hasLegacySlowRequestThreshold = true
 			legacySlowRequestThreshold = option.Value
-		case "ChannelStreamSlowRequestThreshold":
-			hasStreamSlowRequestThreshold = true
 		case "ChannelNonStreamSlowRequestThreshold":
 			hasNonStreamSlowRequestThreshold = true
 		}
@@ -219,9 +215,6 @@ func loadOptionsFromDatabase() {
 		}
 	}
 	if hasLegacySlowRequestThreshold {
-		if !hasStreamSlowRequestThreshold {
-			_ = updateOptionMap("ChannelStreamSlowRequestThreshold", legacySlowRequestThreshold)
-		}
 		if !hasNonStreamSlowRequestThreshold {
 			_ = updateOptionMap("ChannelNonStreamSlowRequestThreshold", legacySlowRequestThreshold)
 		}
@@ -594,8 +587,6 @@ func updateOptionMap(key string, value string) (err error) {
 		common.ChannelDisableThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelSlowRequestThreshold":
 		common.ChannelSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
-	case "ChannelStreamSlowRequestThreshold":
-		common.ChannelStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelNonStreamSlowRequestThreshold":
 		common.ChannelNonStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
 	case "StreamFirstResponseTimeoutSeconds":

@@ -36,7 +36,6 @@ export default function SettingsMonitoring(props) {
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
     StreamFirstResponseTimeoutSeconds: '',
-    ChannelStreamSlowRequestThreshold: '',
     ChannelNonStreamSlowRequestThreshold: '',
     QuotaRemindThreshold: '',
     AutomaticDisableChannelEnabled: false,
@@ -223,25 +222,6 @@ export default function SettingsMonitoring(props) {
                     setInputs({
                       ...inputs,
                       StreamFirstResponseTimeoutSeconds: String(value),
-                    })
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
-                  label={t('流式文本慢请求阈值')}
-                  step={1}
-                  min={0}
-                  suffix={t('秒')}
-                  extraText={t(
-                    '已不再用于流式自动禁用，请改用流式首字超时',
-                  )}
-                  placeholder={''}
-                  field={'ChannelStreamSlowRequestThreshold'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      ChannelStreamSlowRequestThreshold: String(value),
                     })
                   }
                 />

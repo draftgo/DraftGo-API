@@ -156,7 +156,6 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 var ChannelDisableThreshold = 5.0
 var ChannelSlowRequestThreshold = 0.0
-var ChannelStreamSlowRequestThreshold = 0.0
 var ChannelNonStreamSlowRequestThreshold = 0.0
 var StreamFirstResponseTimeoutSeconds = 0.0
 var AutomaticDisableChannelEnabled = false

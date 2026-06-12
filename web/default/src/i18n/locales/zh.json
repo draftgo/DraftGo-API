@@ -1822,7 +1822,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",
@@ -3767,7 +3767,6 @@
     "Slug must be less than 100 characters": "Slug 不能超过 100 个字符",
     "Smallest USD amount users can recharge (Epay)": "用户可以充值的最小美元金额 (Epay)",
     "Slow text request threshold (seconds)": "文本慢请求阈值（秒）",
-    "Streaming text slow request threshold (seconds)": "流式文本慢请求阈值（秒）",
     "Non-streaming text slow request threshold (seconds)": "非流式文本慢请求阈值（秒）",
     "SMTP Email": "SMTP 邮箱",
     "SMTP Host": "SMTP 主机",
@@ -4626,6 +4625,8 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Streaming first-token timeout (seconds)": "流式首字超时（秒）",
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道。0 表示关闭此规则。"
   }
 }

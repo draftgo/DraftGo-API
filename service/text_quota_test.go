@@ -331,14 +331,11 @@ func TestTextSlowRequestDuration(t *testing.T) {
 }
 
 func TestTextSlowRequestThreshold(t *testing.T) {
-	originalStreamThreshold := common.ChannelStreamSlowRequestThreshold
 	originalNonStreamThreshold := common.ChannelNonStreamSlowRequestThreshold
 	t.Cleanup(func() {
-		common.ChannelStreamSlowRequestThreshold = originalStreamThreshold
 		common.ChannelNonStreamSlowRequestThreshold = originalNonStreamThreshold
 	})
 
-	common.ChannelStreamSlowRequestThreshold = 3
 	common.ChannelNonStreamSlowRequestThreshold = 30
 
 	require.Zero(t, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: true}))

@@ -56,7 +56,6 @@ const monitoringSchema = z
   .object({
     ChannelDisableThreshold: numericString,
     StreamFirstResponseTimeoutSeconds: numericString,
-    ChannelStreamSlowRequestThreshold: numericString,
     ChannelNonStreamSlowRequestThreshold: numericString,
     ChannelDisableWindowMinutes: numericString,
     ChannelDisableFailureThreshold: numericString,
@@ -121,7 +120,6 @@ type MonitoringSettingsSectionProps = {
   defaultValues: {
     ChannelDisableThreshold: string
     StreamFirstResponseTimeoutSeconds: string
-    ChannelStreamSlowRequestThreshold: string
     ChannelNonStreamSlowRequestThreshold: string
     ChannelDisableWindowMinutes: string
     ChannelDisableFailureThreshold: string
@@ -147,7 +145,6 @@ function normalizeLineEndings(value: string) {
 type NormalizedMonitoringValues = {
   ChannelDisableThreshold: string
   StreamFirstResponseTimeoutSeconds: string
-  ChannelStreamSlowRequestThreshold: string
   ChannelNonStreamSlowRequestThreshold: string
   ChannelDisableWindowMinutes: string
   ChannelDisableFailureThreshold: string
@@ -171,8 +168,6 @@ const buildFormDefaults = (
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
   StreamFirstResponseTimeoutSeconds:
     defaults.StreamFirstResponseTimeoutSeconds ?? '',
-  ChannelStreamSlowRequestThreshold:
-    defaults.ChannelStreamSlowRequestThreshold ?? '',
   ChannelNonStreamSlowRequestThreshold:
     defaults.ChannelNonStreamSlowRequestThreshold ?? '',
   ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
@@ -208,9 +203,6 @@ const normalizeDefaults = (
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
   StreamFirstResponseTimeoutSeconds: (
     defaults.StreamFirstResponseTimeoutSeconds ?? ''
-  ).trim(),
-  ChannelStreamSlowRequestThreshold: (
-    defaults.ChannelStreamSlowRequestThreshold ?? ''
   ).trim(),
   ChannelNonStreamSlowRequestThreshold: (
     defaults.ChannelNonStreamSlowRequestThreshold ?? ''
@@ -253,8 +245,6 @@ const normalizeFormValues = (
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
   StreamFirstResponseTimeoutSeconds:
     values.StreamFirstResponseTimeoutSeconds.trim(),
-  ChannelStreamSlowRequestThreshold:
-    values.ChannelStreamSlowRequestThreshold.trim(),
   ChannelNonStreamSlowRequestThreshold:
     values.ChannelNonStreamSlowRequestThreshold.trim(),
   ChannelDisableWindowMinutes: values.ChannelDisableWindowMinutes.trim(),
@@ -449,7 +439,7 @@ export function MonitoringSettingsSection({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {t('Streaming first response timeout (seconds)')}
+                    {t('Streaming first-token timeout (seconds)')}
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -462,34 +452,7 @@ export function MonitoringSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Streaming text requests retry another channel when no first token arrives before this timeout. 0 disables this rule.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='ChannelStreamSlowRequestThreshold'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t('Streaming text slow request threshold (seconds)')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      min={0}
-                      step={1}
-                      value={field.value}
-                      onChange={(event) => field.onChange(event.target.value)}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Deprecated for streaming auto-disable. Use streaming first response timeout instead.'
+                      'If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.'
                     )}
                   </FormDescription>
                   <FormMessage />

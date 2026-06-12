@@ -4215,6 +4215,10 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "流式首字超时": "Thoi gian cho token dau tien khi streaming",
+    "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道，0 表示关闭": "Neu yeu cau van ban streaming khong nhan duoc token dau tien truoc thoi gian nay, kenh hien tai duoc xem la that bai va he thong se thu lai kenh tiep theo. 0 tat quy tac nay.",
+    "非流式文本慢请求阈值": "Nguong yeu cau van ban cham khong streaming",
+    "仅统计非流式文本请求，按总耗时判断，0 表示关闭": "Chi tinh cac yeu cau van ban khong streaming. Danh gia theo tong thoi gian. 0 tat quy tac nay."
   }
 }

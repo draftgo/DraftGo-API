@@ -32,7 +32,6 @@ const defaultOperationsSettings: OperationsSettings = {
   SelfUseModeEnabled: false,
   ChannelDisableThreshold: '',
   StreamFirstResponseTimeoutSeconds: '',
-  ChannelStreamSlowRequestThreshold: '',
   ChannelNonStreamSlowRequestThreshold: '',
   ChannelDisableWindowMinutes: '5',
   ChannelDisableFailureThreshold: '3',

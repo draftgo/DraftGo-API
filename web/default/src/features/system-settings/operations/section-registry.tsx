@@ -50,8 +50,6 @@ const OPERATIONS_SECTIONS = [
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
           StreamFirstResponseTimeoutSeconds:
             settings.StreamFirstResponseTimeoutSeconds,
-          ChannelStreamSlowRequestThreshold:
-            settings.ChannelStreamSlowRequestThreshold,
           ChannelNonStreamSlowRequestThreshold:
             settings.ChannelNonStreamSlowRequestThreshold,
           ChannelDisableWindowMinutes: settings.ChannelDisableWindowMinutes,
