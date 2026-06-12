@@ -362,7 +362,7 @@ func textSlowRequestThreshold(relayInfo *relaycommon.RelayInfo) float64 {
 		return 0
 	}
 	if relayInfo.IsStream {
-		return common.ChannelStreamSlowRequestThreshold
+		return 0
 	}
 	return common.ChannelNonStreamSlowRequestThreshold
 }

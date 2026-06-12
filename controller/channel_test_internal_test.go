@@ -3,11 +3,14 @@ package controller
 import (
 	"errors"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -164,6 +167,66 @@ func TestRecoveryProbeCountDefaultsToOne(t *testing.T) {
 	require.Equal(t, 3, recoveryProbeCount())
 }
 
+func TestRecoveryProbeIntervalDefaultsToFiveMinutes(t *testing.T) {
+	setting := operation_setting.GetMonitorSetting()
+	originalInterval := setting.RecoveryProbeMinutes
+	t.Cleanup(func() {
+		setting.RecoveryProbeMinutes = originalInterval
+	})
+
+	setting.RecoveryProbeMinutes = 0
+	require.Equal(t, 5*time.Minute, recoveryProbeInterval(setting))
+
+	setting.RecoveryProbeMinutes = 0.5
+	require.Equal(t, 30*time.Second, recoveryProbeInterval(setting))
+
+	setting.RecoveryProbeMinutes = 2
+	require.Equal(t, 2*time.Minute, recoveryProbeInterval(setting))
+}
+
+func TestProbeRecoveryChannelsRunsChannelsConcurrently(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1},
+		{Id: 2},
+		{Id: 3},
+	}
+	started := make(chan int, len(channels))
+	release := make(chan struct{})
+
+	var mu sync.Mutex
+	completed := make([]int, 0, len(channels))
+	done := make(chan struct{})
+	go func() {
+		probeRecoveryChannels(channels, 1, func(channel *model.Channel, probeUserID int) {
+			started <- channel.Id
+			<-release
+			mu.Lock()
+			completed = append(completed, channel.Id)
+			mu.Unlock()
+		})
+		close(done)
+	}()
+
+	for range channels {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("expected every channel probe to start before any probe completes")
+		}
+	}
+
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("expected channel probes to complete")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, completed, len(channels))
+}
+
 func TestAllRecoveryProbeAttemptsPassedRequiresEveryAttempt(t *testing.T) {
 	setting := operation_setting.GetMonitorSetting()
 	originalThreshold := setting.RecoveryThresholdSeconds
@@ -195,4 +258,47 @@ func TestAllRecoveryProbeAttemptsPassedRequiresEveryAttempt(t *testing.T) {
 			milliseconds: 1000,
 		},
 	}, common.ChannelStatusAutoDisabled))
+}
+
+func TestFirstPassedRecoveryProbeAttemptUsesAnySuccessfulAttempt(t *testing.T) {
+	setting := operation_setting.GetMonitorSetting()
+	originalThreshold := setting.RecoveryThresholdSeconds
+	originalEnable := common.AutomaticEnableChannelEnabled
+	t.Cleanup(func() {
+		setting.RecoveryThresholdSeconds = originalThreshold
+		common.AutomaticEnableChannelEnabled = originalEnable
+	})
+
+	common.AutomaticEnableChannelEnabled = true
+	setting.RecoveryThresholdSeconds = 10
+
+	attempts := []recoveryProbeAttempt{
+		{
+			result: testResult{
+				newAPIError: types.NewError(errors.New("probe failed"), types.ErrorCodeDoRequestFailed),
+			},
+			milliseconds: 1000,
+		},
+		{milliseconds: 9000},
+	}
+
+	passed := firstPassedRecoveryProbeAttempt(attempts, common.ChannelStatusAutoDisabled)
+	require.NotNil(t, passed)
+	require.Equal(t, int64(9000), passed.milliseconds)
+}
+
+func TestFindMultiKeyIndexByKey(t *testing.T) {
+	channel := &model.Channel{
+		ChannelInfo: model.ChannelInfo{
+			IsMultiKey: true,
+		},
+		Key: "key-a\nkey-b\nkey-c",
+	}
+
+	keyIndex := findMultiKeyIndexByKey(channel, "key-b")
+	require.NotNil(t, keyIndex)
+	require.Equal(t, 1, *keyIndex)
+
+	require.Nil(t, findMultiKeyIndexByKey(channel, "missing-key"))
+	require.Nil(t, findMultiKeyIndexByKey(&model.Channel{Key: "key-a"}, "key-a"))
 }

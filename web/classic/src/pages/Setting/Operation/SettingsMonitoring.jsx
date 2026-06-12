@@ -35,6 +35,7 @@ export default function SettingsMonitoring(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     ChannelDisableThreshold: '',
+    StreamFirstResponseTimeoutSeconds: '',
     ChannelStreamSlowRequestThreshold: '',
     ChannelNonStreamSlowRequestThreshold: '',
     QuotaRemindThreshold: '',
@@ -209,12 +210,31 @@ export default function SettingsMonitoring(props) {
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
+                  label={t('流式首字超时')}
+                  step={1}
+                  min={0}
+                  suffix={t('秒')}
+                  extraText={t(
+                    '流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道，0 表示关闭',
+                  )}
+                  placeholder={''}
+                  field={'StreamFirstResponseTimeoutSeconds'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      StreamFirstResponseTimeoutSeconds: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
                   label={t('流式文本慢请求阈值')}
                   step={1}
                   min={0}
                   suffix={t('秒')}
                   extraText={t(
-                    '仅统计流式文本请求，按首字时间判断，0 表示关闭',
+                    '已不再用于流式自动禁用，请改用流式首字超时',
                   )}
                   placeholder={''}
                   field={'ChannelStreamSlowRequestThreshold'}
@@ -302,8 +322,8 @@ export default function SettingsMonitoring(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('恢复探测间隔')}
-                  step={1}
-                  min={1}
+                  step={0.1}
+                  min={0.1}
                   suffix={t('分钟')}
                   extraText={t('独立探测模式下，每隔多少分钟测试禁用通道')}
                   placeholder={''}
@@ -314,7 +334,8 @@ export default function SettingsMonitoring(props) {
                   onChange={(value) =>
                     setInputs({
                       ...inputs,
-                      'monitor_setting.recovery_probe_minutes': parseInt(value),
+                      'monitor_setting.recovery_probe_minutes':
+                        parseFloat(value),
                     })
                   }
                 />

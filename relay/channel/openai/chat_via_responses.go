@@ -516,6 +516,9 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		default:
 		}
 	})
+	if err := helper.StreamFirstResponseTimeoutAPIError(info); err != nil {
+		return nil, err
+	}
 
 	if streamErr != nil {
 		return nil, streamErr

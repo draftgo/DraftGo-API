@@ -14,7 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 
@@ -86,6 +88,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	logger.LogDebug(c, "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
 	logger.LogDebug(c, "streaming timeout seconds: %d", int64(streamingTimeout.Seconds()))
 	logger.LogDebug(c, "ping interval seconds: %d", int64(pingInterval.Seconds()))
+	firstResponseTimeoutEnabled := streamFirstResponseTimeoutEnabled(info)
+	if firstResponseTimeoutEnabled {
+		logger.LogDebug(c, "stream first response timeout seconds: %.2f", common.StreamFirstResponseTimeoutSeconds)
+	}
 
 	// 改进资源清理，确保所有 goroutine 正确退出
 	defer func() {
@@ -184,6 +190,16 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	dataChan := make(chan string, 10)
+	firstResponseTimeout := time.Duration(common.StreamFirstResponseTimeoutSeconds * float64(time.Second))
+	var firstResponseTimer *time.Timer
+	firstResponseSeen := make(chan struct{})
+	var firstResponseSeenOnce sync.Once
+	var firstResponseMu sync.Mutex
+	firstResponseReceived := false
+	if firstResponseTimeoutEnabled && firstResponseTimeout > 0 {
+		firstResponseTimer = time.NewTimer(firstResponseTimeout)
+		defer firstResponseTimer.Stop()
+	}
 
 	wg.Add(1)
 	gopool.Go(func() {
@@ -252,6 +268,15 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			if !strings.HasPrefix(data, "[DONE]") {
 				info.SetFirstResponseTime()
 				info.ReceivedResponseCount++
+				firstResponseMu.Lock()
+				firstResponseReceived = true
+				if firstResponseTimer != nil {
+					firstResponseTimer.Stop()
+				}
+				firstResponseMu.Unlock()
+				firstResponseSeenOnce.Do(func() {
+					close(firstResponseSeen)
+				})
 
 				select {
 				case dataChan <- data:
@@ -276,19 +301,87 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonEOF, nil)
 	})
 
-	// 主循环等待完成或超时
-	select {
-	case <-ticker.C:
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
-	case <-stopChan:
-		// EndReason already set by the goroutine that triggered stopChan
-	case <-c.Request.Context().Done():
-		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+	waitForStreamEnd := func() {
+		select {
+		case <-ticker.C:
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
+		case <-stopChan:
+			// EndReason already set by the goroutine that triggered stopChan
+		case <-c.Request.Context().Done():
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+		}
+	}
+
+	// 主循环等待首字、完成或超时
+	if firstResponseTimer != nil {
+		select {
+		case <-firstResponseSeen:
+			waitForStreamEnd()
+		case <-firstResponseTimer.C:
+			firstResponseMu.Lock()
+			received := firstResponseReceived
+			firstResponseMu.Unlock()
+			if received {
+				waitForStreamEnd()
+				break
+			}
+			err := fmt.Errorf("stream first response timeout after %.2fs", common.StreamFirstResponseTimeoutSeconds)
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonFirstResponseTimeout, err)
+			if resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+		case <-ticker.C:
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
+		case <-stopChan:
+			// EndReason already set by the goroutine that triggered stopChan
+		case <-c.Request.Context().Done():
+			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
+		}
+	} else {
+		waitForStreamEnd()
 	}
 
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
 	} else {
 		logger.LogError(c, fmt.Sprintf("stream ended: %s, received=%d", info.StreamStatus.Summary(), info.ReceivedResponseCount))
+	}
+}
+
+func StreamFirstResponseTimeoutError(info *relaycommon.RelayInfo) error {
+	if info == nil || info.StreamStatus == nil {
+		return nil
+	}
+	if info.StreamStatus.EndReason != relaycommon.StreamEndReasonFirstResponseTimeout {
+		return nil
+	}
+	if info.StreamStatus.EndError != nil {
+		return info.StreamStatus.EndError
+	}
+	return fmt.Errorf("stream first response timeout")
+}
+
+func StreamFirstResponseTimeoutAPIError(info *relaycommon.RelayInfo) *types.NewAPIError {
+	err := StreamFirstResponseTimeoutError(info)
+	if err == nil {
+		return nil
+	}
+	return types.NewOpenAIError(err, types.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
+}
+
+func streamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
+	if common.StreamFirstResponseTimeoutSeconds <= 0 || info == nil {
+		return false
+	}
+
+	switch info.RelayMode {
+	case relayconstant.RelayModeChatCompletions,
+		relayconstant.RelayModeCompletions,
+		relayconstant.RelayModeResponses,
+		relayconstant.RelayModeResponsesCompact,
+		relayconstant.RelayModeGemini:
+		return true
+	default:
+		return false
 	}
 }

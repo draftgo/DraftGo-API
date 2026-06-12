@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -776,10 +777,32 @@ func allRecoveryProbeAttemptsPassed(attempts []recoveryProbeAttempt, status int)
 	return true
 }
 
+func firstPassedRecoveryProbeAttempt(attempts []recoveryProbeAttempt, status int) *recoveryProbeAttempt {
+	for i := range attempts {
+		if shouldEnableChannelAfterRecoveryProbe(attempts[i].result.newAPIError, status, attempts[i].milliseconds) {
+			return &attempts[i]
+		}
+	}
+	return nil
+}
+
 func firstRecoveryProbeContext(attempts []recoveryProbeAttempt) *gin.Context {
 	for _, attempt := range attempts {
 		if attempt.result.context != nil {
 			return attempt.result.context
+		}
+	}
+	return nil
+}
+
+func findMultiKeyIndexByKey(channel *model.Channel, usingKey string) *int {
+	if channel == nil || !channel.ChannelInfo.IsMultiKey || usingKey == "" {
+		return nil
+	}
+	for index, key := range channel.GetKeys() {
+		if key == usingKey {
+			idx := index
+			return &idx
 		}
 	}
 	return nil
@@ -1150,6 +1173,14 @@ func AutomaticallyTestChannels() {
 
 var recoveryProbeOnce sync.Once
 
+func recoveryProbeInterval(setting *operation_setting.MonitorSetting) time.Duration {
+	interval := setting.RecoveryProbeMinutes
+	if interval <= 0 {
+		interval = 5
+	}
+	return time.Duration(interval * float64(time.Minute))
+}
+
 func AutomaticallyProbeDisabledChannels() {
 	if !common.IsMasterNode {
 		return
@@ -1161,23 +1192,36 @@ func AutomaticallyProbeDisabledChannels() {
 				time.Sleep(1 * time.Minute)
 				continue
 			}
+			var running atomic.Bool
 			for {
 				setting = operation_setting.GetMonitorSetting()
 				if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
 					break
 				}
-				interval := setting.RecoveryProbeMinutes
-				if interval < 1 {
-					interval = 5
+				interval := recoveryProbeInterval(setting)
+				time.Sleep(interval)
+				setting = operation_setting.GetMonitorSetting()
+				if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
+					break
 				}
-				time.Sleep(time.Duration(int(math.Round(interval))) * time.Minute)
-				common.SysLog("recovery probe: testing disabled channels")
-				probeDisabledChannels()
-				common.SysLog("recovery probe: finished")
+				if !running.CompareAndSwap(false, true) {
+					common.SysLog("recovery probe: previous round still running, skipping this tick")
+					continue
+				}
+				go func() {
+					defer func() {
+						running.Store(false)
+					}()
+					common.SysLog("recovery probe: testing disabled channels")
+					probeDisabledChannels()
+					common.SysLog("recovery probe: finished")
+				}()
 			}
 		}
 	})
 }
+
+type recoveryProbeChannelRunner func(channel *model.Channel, probeUserID int)
 
 func probeDisabledChannels() {
 	channels, err := getRecoveryProbeChannels()
@@ -1193,18 +1237,62 @@ func probeDisabledChannels() {
 		common.SysError("recovery probe: " + err.Error())
 		return
 	}
+	probeRecoveryChannels(channels, probeUserID, probeRecoveryChannel)
+}
+
+func probeAutoDisabledChannelImmediately(channelError types.ChannelError) {
+	if !common.AutomaticEnableChannelEnabled {
+		return
+	}
+	channel, err := model.CacheGetChannel(channelError.ChannelId)
+	if err != nil {
+		channel, err = model.GetChannelById(channelError.ChannelId, true)
+	}
+	if err != nil {
+		common.SysError(fmt.Sprintf("immediate recovery probe: failed to get channel #%d: %s", channelError.ChannelId, err.Error()))
+		return
+	}
+	probeUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		common.SysError("immediate recovery probe: " + err.Error())
+		return
+	}
+	options := channelTestOptions{}
+	if keyIndex := findMultiKeyIndexByKey(channel, channelError.UsingKey); keyIndex != nil {
+		options.forcedMultiKeyIndex = keyIndex
+	}
+	attempts := runRecoveryProbeAttempts(channel, probeUserID, options)
+	if passed := firstPassedRecoveryProbeAttempt(attempts, common.ChannelStatusAutoDisabled); passed != nil && passed.result.context != nil {
+		service.EnableChannel(channel.Id, common.GetContextKeyString(passed.result.context, constant.ContextKeyChannelKey), channel.Name)
+	}
+}
+
+func probeRecoveryChannels(channels []*model.Channel, probeUserID int, runner recoveryProbeChannelRunner) {
+	var wg sync.WaitGroup
 	for _, channel := range channels {
-		if channel.ChannelInfo.IsMultiKey {
-			probeMultiKeyRecovery(channel, probeUserID)
-		} else {
-			attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{})
-			if allRecoveryProbeAttemptsPassed(attempts, channel.Status) {
-				if context := firstRecoveryProbeContext(attempts); context != nil {
-					service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
-				}
-			}
+		if channel == nil {
+			continue
 		}
-		time.Sleep(common.RequestInterval)
+		ch := channel
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runner(ch, probeUserID)
+		}()
+	}
+	wg.Wait()
+}
+
+func probeRecoveryChannel(channel *model.Channel, probeUserID int) {
+	if channel.ChannelInfo.IsMultiKey {
+		probeMultiKeyRecovery(channel, probeUserID)
+		return
+	}
+	attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{})
+	if allRecoveryProbeAttemptsPassed(attempts, channel.Status) {
+		if context := firstRecoveryProbeContext(attempts); context != nil {
+			service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
+		}
 	}
 }
 

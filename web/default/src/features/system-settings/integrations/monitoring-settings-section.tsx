@@ -55,6 +55,7 @@ const numericString = z.string().refine((value) => {
 const monitoringSchema = z
   .object({
     ChannelDisableThreshold: numericString,
+    StreamFirstResponseTimeoutSeconds: numericString,
     ChannelStreamSlowRequestThreshold: numericString,
     ChannelNonStreamSlowRequestThreshold: numericString,
     ChannelDisableWindowMinutes: numericString,
@@ -74,8 +75,7 @@ const monitoringSchema = z
       recovery_mode: z.enum(['follow', 'independent']),
       recovery_probe_minutes: z.coerce
         .number()
-        .int()
-        .min(1, 'Interval must be at least 1 minute'),
+        .positive('Interval must be greater than 0 minutes'),
       recovery_probe_count: z.coerce
         .number()
         .int()
@@ -120,6 +120,7 @@ type MonitoringFormInput = z.input<typeof monitoringSchema>
 type MonitoringSettingsSectionProps = {
   defaultValues: {
     ChannelDisableThreshold: string
+    StreamFirstResponseTimeoutSeconds: string
     ChannelStreamSlowRequestThreshold: string
     ChannelNonStreamSlowRequestThreshold: string
     ChannelDisableWindowMinutes: string
@@ -145,6 +146,7 @@ function normalizeLineEndings(value: string) {
 
 type NormalizedMonitoringValues = {
   ChannelDisableThreshold: string
+  StreamFirstResponseTimeoutSeconds: string
   ChannelStreamSlowRequestThreshold: string
   ChannelNonStreamSlowRequestThreshold: string
   ChannelDisableWindowMinutes: string
@@ -167,6 +169,8 @@ const buildFormDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): MonitoringFormInput => ({
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
+  StreamFirstResponseTimeoutSeconds:
+    defaults.StreamFirstResponseTimeoutSeconds ?? '',
   ChannelStreamSlowRequestThreshold:
     defaults.ChannelStreamSlowRequestThreshold ?? '',
   ChannelNonStreamSlowRequestThreshold:
@@ -202,6 +206,9 @@ const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
+  StreamFirstResponseTimeoutSeconds: (
+    defaults.StreamFirstResponseTimeoutSeconds ?? ''
+  ).trim(),
   ChannelStreamSlowRequestThreshold: (
     defaults.ChannelStreamSlowRequestThreshold ?? ''
   ).trim(),
@@ -244,6 +251,8 @@ const normalizeFormValues = (
   values: MonitoringFormValues
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
+  StreamFirstResponseTimeoutSeconds:
+    values.StreamFirstResponseTimeoutSeconds.trim(),
   ChannelStreamSlowRequestThreshold:
     values.ChannelStreamSlowRequestThreshold.trim(),
   ChannelNonStreamSlowRequestThreshold:
@@ -436,6 +445,33 @@ export function MonitoringSettingsSection({
           <div className='grid gap-6 md:grid-cols-2'>
             <FormField
               control={form.control}
+              name='StreamFirstResponseTimeoutSeconds'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Streaming first response timeout (seconds)')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step={1}
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Streaming text requests retry another channel when no first token arrives before this timeout. 0 disables this rule.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name='ChannelStreamSlowRequestThreshold'
               render={({ field }) => (
                 <FormItem>
@@ -453,7 +489,7 @@ export function MonitoringSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Only streaming text requests are counted. Uses first-token latency. 0 disables this rule.'
+                      'Deprecated for streaming auto-disable. Use streaming first response timeout instead.'
                     )}
                   </FormDescription>
                   <FormMessage />
@@ -625,8 +661,8 @@ export function MonitoringSettingsSection({
                   <FormControl>
                     <Input
                       type='number'
-                      min={1}
-                      step={1}
+                      min={0.1}
+                      step={0.1}
                       disabled={
                         form.watch('monitor_setting.recovery_mode') !==
                         'independent'

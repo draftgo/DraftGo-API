@@ -158,6 +158,7 @@ var ChannelDisableThreshold = 5.0
 var ChannelSlowRequestThreshold = 0.0
 var ChannelStreamSlowRequestThreshold = 0.0
 var ChannelNonStreamSlowRequestThreshold = 0.0
+var StreamFirstResponseTimeoutSeconds = 0.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
 var ChannelDisableWindowMinutes = 5

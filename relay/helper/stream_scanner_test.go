@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -560,6 +562,31 @@ func TestStreamScannerHandler_StreamStatus_Timeout(t *testing.T) {
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonTimeout, info.StreamStatus.EndReason)
 	assert.False(t, info.StreamStatus.IsNormalEnd())
+}
+
+func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
+	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
+	common.StreamFirstResponseTimeoutSeconds = 0.05
+	t.Cleanup(func() { common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout })
+
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		_ = pr.Close()
+		_ = pw.Close()
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	resp := &http.Response{Body: pr}
+	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeChatCompletions, ChannelMeta: &relaycommon.ChannelMeta{}}
+
+	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+
+	require.NotNil(t, info.StreamStatus)
+	assert.Equal(t, relaycommon.StreamEndReasonFirstResponseTimeout, info.StreamStatus.EndReason)
+	require.NotNil(t, StreamFirstResponseTimeoutAPIError(info))
 }
 
 func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {

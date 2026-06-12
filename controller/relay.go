@@ -367,7 +367,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
 		if service.RecordFailure(channelError.ChannelId, channelError.UsingKey) {
 			gopool.Go(func() {
-				service.DisableChannel(channelError, err.ErrorWithStatusCode())
+				if service.DisableChannel(channelError, err.ErrorWithStatusCode()) {
+					probeAutoDisabledChannelImmediately(channelError)
+				}
 			})
 		}
 	}

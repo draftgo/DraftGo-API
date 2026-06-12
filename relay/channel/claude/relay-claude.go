@@ -920,6 +920,9 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 			sr.Stop(err)
 		}
 	})
+	if timeoutErr := helper.StreamFirstResponseTimeoutAPIError(info); timeoutErr != nil {
+		return nil, timeoutErr
+	}
 	if err != nil {
 		return nil, err
 	}

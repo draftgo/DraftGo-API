@@ -276,6 +276,7 @@ export type OperationsSettings = {
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
   ChannelDisableThreshold: string
+  StreamFirstResponseTimeoutSeconds: string
   ChannelStreamSlowRequestThreshold: string
   ChannelNonStreamSlowRequestThreshold: string
   ChannelDisableWindowMinutes: string

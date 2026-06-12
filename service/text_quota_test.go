@@ -341,7 +341,7 @@ func TestTextSlowRequestThreshold(t *testing.T) {
 	common.ChannelStreamSlowRequestThreshold = 3
 	common.ChannelNonStreamSlowRequestThreshold = 30
 
-	require.Equal(t, 3.0, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: true}))
+	require.Zero(t, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: true}))
 	require.Equal(t, 30.0, textSlowRequestThreshold(&relaycommon.RelayInfo{IsStream: false}))
 	require.Zero(t, textSlowRequestThreshold(nil))
 }

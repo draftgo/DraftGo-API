@@ -57,6 +57,7 @@ func InitOptionMap() {
 	common.OptionMap["ChannelSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelStreamSlowRequestThreshold, 'f', -1, 64)
 	common.OptionMap["ChannelNonStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelNonStreamSlowRequestThreshold, 'f', -1, 64)
+	common.OptionMap["StreamFirstResponseTimeoutSeconds"] = strconv.FormatFloat(common.StreamFirstResponseTimeoutSeconds, 'f', -1, 64)
 	common.OptionMap["ChannelDisableWindowMinutes"] = strconv.Itoa(common.ChannelDisableWindowMinutes)
 	common.OptionMap["ChannelDisableFailureThreshold"] = strconv.Itoa(common.ChannelDisableFailureThreshold)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -597,6 +598,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.ChannelStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
 	case "ChannelNonStreamSlowRequestThreshold":
 		common.ChannelNonStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
+	case "StreamFirstResponseTimeoutSeconds":
+		common.StreamFirstResponseTimeoutSeconds, _ = strconv.ParseFloat(value, 64)
 	case "ChannelDisableWindowMinutes":
 		common.ChannelDisableWindowMinutes, _ = strconv.Atoi(value)
 	case "ChannelDisableFailureThreshold":
