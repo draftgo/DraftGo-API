@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -81,8 +82,11 @@ type Properties struct {
 }
 
 func (m *Properties) Scan(val interface{}) error {
-	bytesValue, _ := val.([]byte)
-	if len(bytesValue) == 0 {
+	bytesValue, empty, err := scanJSONColumn(val)
+	if err != nil {
+		return fmt.Errorf("failed to scan Properties: %w", err)
+	}
+	if empty {
 		*m = Properties{}
 		return nil
 	}
@@ -142,8 +146,12 @@ func GenerateTaskID() string {
 }
 
 func (p *TaskPrivateData) Scan(val interface{}) error {
-	bytesValue, _ := val.([]byte)
-	if len(bytesValue) == 0 {
+	bytesValue, empty, err := scanJSONColumn(val)
+	if err != nil {
+		return fmt.Errorf("failed to scan TaskPrivateData: %w", err)
+	}
+	if empty {
+		*p = TaskPrivateData{}
 		return nil
 	}
 	return common.Unmarshal(bytesValue, p)

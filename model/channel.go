@@ -1,7 +1,6 @@
 package model
 
 import (
-	"bytes"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -169,19 +168,11 @@ func (c ChannelInfo) Value() (driver.Value, error) {
 
 // Scan implements sql.Scanner interface
 func (c *ChannelInfo) Scan(value interface{}) error {
-	var bytesValue []byte
-	switch v := value.(type) {
-	case nil:
-		*c = ChannelInfo{}
-		return nil
-	case []byte:
-		bytesValue = bytes.TrimSpace(v)
-	case string:
-		bytesValue = []byte(strings.TrimSpace(v))
-	default:
-		return fmt.Errorf("failed to scan ChannelInfo: unsupported value type %T", value)
+	bytesValue, empty, err := scanJSONColumn(value)
+	if err != nil {
+		return fmt.Errorf("failed to scan ChannelInfo: %w", err)
 	}
-	if len(bytesValue) == 0 || bytes.Equal(bytesValue, []byte("null")) {
+	if empty {
 		*c = ChannelInfo{}
 		return nil
 	}
