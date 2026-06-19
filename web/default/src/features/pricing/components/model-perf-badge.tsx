@@ -21,8 +21,8 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import {
   formatLatency,
-  formatThroughput,
   formatUptimePct,
+  getSuccessRateDotClass,
 } from '@/features/performance-metrics/lib/format'
 import type {
   AvailabilityStatus,
@@ -45,14 +45,22 @@ export type ModelPerfBadgeData = {
   auto_test_enabled?: boolean
   auto_test_interval_minutes?: number
   health_source?: HealthSource
+  recent_success_rates?: number[]
 }
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   perf: ModelPerfBadgeData | undefined
 }
 
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  return value > 1 ? String(Math.round(value)) : value.toFixed(1)
+}
+
 function formatCompactThroughput(tps: number): string {
-  return formatThroughput(tps).replace(' t/s', 'tps')
+  if (!Number.isFinite(tps) || tps <= 0) return '—'
+  if (tps >= 1_000) return `${formatCompactNumber(tps / 1_000)}Kt`
+  return `${formatCompactNumber(tps)}t`
 }
 
 export function getAvailabilityConfig(
@@ -110,6 +118,15 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   const sourceLabel = getHealthSourceLabel(props.perf?.health_source, t)
   const availableChannels = props.perf?.available_channels ?? 0
   const totalChannels = props.perf?.total_channels ?? 0
+  const recentRates =
+    props.perf?.recent_success_rates?.filter((rate) => Number.isFinite(rate)) ??
+    []
+  const statusRates =
+    recentRates.length > 0 ? recentRates.slice(-3) : [successRate]
+  const statusBars = [
+    ...Array(Math.max(0, 3 - statusRates.length)).fill(null),
+    ...statusRates,
+  ].slice(-3)
 
   return (
     <div
@@ -147,11 +164,22 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
         </div>
         <div className='flex h-4 items-center justify-end gap-1'>
           <span className={cn('size-1.5 rounded-full', availability.color)} />
-          <span className='text-muted-foreground/80 font-mono text-[11px] leading-4 whitespace-nowrap'>
-            {Number.isFinite(successRate)
-              ? `${Math.round(successRate)}%`
-              : '100%'}
-          </span>
+          {statusBars.map((rate, index) => (
+            <span
+              key={`${index}-${rate ?? 'empty'}`}
+              className={cn(
+                'w-1 rounded-full',
+                index === 0 && 'h-2',
+                index === 1 && 'h-2.5',
+                index === 2 && 'h-3',
+                rate == null
+                  ? index === 0
+                    ? 'bg-muted-foreground/10'
+                    : 'bg-muted-foreground/15'
+                  : getSuccessRateDotClass(rate)
+              )}
+            />
+          ))}
         </div>
       </div>
     </div>
