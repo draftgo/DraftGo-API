@@ -69,7 +69,7 @@ export function PerformanceHealthPanel() {
 
   const summary = useMemo(() => {
     return {
-      avgLatencyMs: Math.round(
+      avgTtftMs: Math.round(
         simpleAverage(
           models,
           'avg_latency_ms',
@@ -113,8 +113,8 @@ export function PerformanceHealthPanel() {
           />
           <MetricCell
             icon={Timer}
-            label={t('Average latency')}
-            value={formatLatency(summary.avgLatencyMs)}
+            label={t('Average TTFT')}
+            value={formatLatency(summary.avgTtftMs)}
             loading={loading}
           />
           <MetricCell
@@ -135,7 +135,7 @@ export function PerformanceHealthPanel() {
           hasData && (
             <div>
               <span className='text-muted-foreground mb-1 block text-[11px] font-medium'>
-                {t('Top models by traffic')}
+                {t('Model performance')}
               </span>
               <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
                 {topModels.map((model) => (

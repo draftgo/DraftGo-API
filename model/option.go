@@ -614,7 +614,35 @@ func updateOptionMap(key string, value string) (err error) {
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
 	}
+	if err == nil && shouldInvalidatePricingOption(key) {
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
+	}
 	return err
+}
+
+func shouldInvalidatePricingOption(key string) bool {
+	switch key {
+	case "ModelPrice",
+		"ModelRatio",
+		"CompletionRatio",
+		"CacheRatio",
+		"CreateCacheRatio",
+		"ImageRatio",
+		"AudioRatio",
+		"AudioCompletionRatio",
+		"GroupRatio",
+		"GroupGroupRatio",
+		"UserUsableGroups",
+		"AutoGroups",
+		"DefaultUseAutoGroup",
+		"group_ratio_setting.group_special_usable_group",
+		"billing_setting.billing_mode",
+		"billing_setting.billing_expr":
+		return true
+	default:
+		return false
+	}
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
@@ -645,6 +673,9 @@ func handleConfigUpdate(key, value string) bool {
 	} else if configName == "tool_price_setting" {
 		operation_setting.RebuildToolPriceIndex()
 	} else if configName == "billing_setting" {
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
+	} else if configName == "group_ratio_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
 	} else if configName == "theme" {

@@ -4722,6 +4722,8 @@
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom",
     "Streaming first-token timeout (seconds)": "Délai du premier token en streaming (secondes)",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "Si une requête texte en streaming ne reçoit aucun premier token avant ce délai, le canal actuel est considéré comme en échec et le canal suivant est réessayé. 0 désactive cette règle."
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "Si une requête texte en streaming ne reçoit aucun premier token avant ce délai, le canal actuel est considéré comme en échec et le canal suivant est réessayé. 0 désactive cette règle.",
+    "Choose an application and map models for the CC Switch provider import.": "Choisissez une application et associez les modèles pour importer le fournisseur CC Switch.",
+    "Only the primary model is required. Optional model fields can be left blank.": "Seul le modèle principal est obligatoire. Les champs de modèles optionnels peuvent rester vides."
   }
 }

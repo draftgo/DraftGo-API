@@ -140,6 +140,7 @@ export default function CCSwitchModal({
       cancelText={t('取消')}
       maskClosable={false}
       width={480}
+      bodyStyle={{ overflow: 'visible' }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
@@ -182,6 +183,10 @@ export default function CCSwitchModal({
               onChange={(val) => handleModelChange(field.key, val)}
               filter={selectFilter}
               style={{ width: '100%' }}
+              position='bottomLeft'
+              getPopupContainer={() => document.body}
+              zIndex={1200}
+              dropdownStyle={{ maxHeight: 280, overflowY: 'auto' }}
               showClear
               searchable
               emptyContent={t('暂无数据')}

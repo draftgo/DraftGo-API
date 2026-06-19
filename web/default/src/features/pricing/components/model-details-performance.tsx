@@ -148,10 +148,7 @@ function toGroupUptimeSeries(group: PerformanceGroup): UptimeDayPoint[] {
   })
 }
 
-function average(
-  rows: PerformanceRow[],
-  field: 'avg_ttft_ms' | 'avg_latency_ms'
-) {
+function average(rows: PerformanceRow[], field: 'avg_ttft_ms') {
   const values = rows.map((row) => row[field]).filter((value) => value > 0)
   if (values.length === 0) return 0
   return Math.round(
@@ -206,7 +203,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     tpsValues.length > 0
       ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
       : 0
-  const avgLatency = average(performances, 'avg_latency_ms')
+  const avgTtft = average(performances, 'avg_ttft_ms')
   const successRates = performances
     .map((perf) => perf.success_rate)
     .filter((value) => Number.isFinite(value))
@@ -229,8 +226,8 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         />
         <StatCard
           icon={Timer}
-          label={t('Average latency')}
-          value={formatLatency(avgLatency)}
+          label={t('Average TTFT')}
+          value={formatLatency(avgTtft)}
         />
         <StatCard
           icon={HeartPulse}
@@ -249,7 +246,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         <SectionHeader
           icon={HeartPulse}
           title={t('Per-group performance')}
-          description={t('Average latency, TTFT, TPS, and success rate')}
+          description={t('TTFT, TPS, and success rate')}
         />
         <StaticDataTable
           className='rounded-lg'
@@ -278,13 +275,6 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
               className: tableStyles.compactHeaderCellRight,
               cellClassName: tableStyles.compactNumericCell,
               cell: (perf) => formatLatency(perf.avg_ttft_ms),
-            },
-            {
-              id: 'latency',
-              header: t('Average latency'),
-              className: tableStyles.compactHeaderCellRight,
-              cellClassName: tableStyles.compactMutedNumericCell,
-              cell: (perf) => formatLatency(perf.avg_latency_ms),
             },
             {
               id: 'success',

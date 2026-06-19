@@ -38,8 +38,7 @@ const TOP_MODEL_LIMIT = 5
 type WeightedMetric = 'avg_latency_ms' | 'avg_tps' | 'success_rate'
 
 type PerformanceSummary = {
-  totalRequests: number
-  avgLatencyMs: number
+  avgTtftMs: number
   avgTps: number
   successRate: number
 }
@@ -64,8 +63,7 @@ function simpleAverage(
 
 function buildPerformanceSummary(rows: PerfModelSummary[]): PerformanceSummary {
   return {
-    totalRequests: rows.length,
-    avgLatencyMs: Math.round(
+    avgTtftMs: Math.round(
       simpleAverage(
         rows,
         'avg_latency_ms',
@@ -144,8 +142,8 @@ export function PerformanceOverview() {
             />
             <InlineMetric
               icon={Timer}
-              label={t('Average latency')}
-              value={formatLatency(summary.avgLatencyMs)}
+              label={t('Average TTFT')}
+              value={formatLatency(summary.avgTtftMs)}
             />
             <InlineMetric
               icon={Gauge}

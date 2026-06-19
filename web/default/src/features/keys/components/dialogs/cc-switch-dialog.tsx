@@ -149,8 +149,11 @@ export function CCSwitchDialog(props: Props) {
       open={props.open}
       onOpenChange={props.onOpenChange}
       title={t('Import to CC Switch')}
-      contentClassName='sm:max-w-md'
-      contentHeight='auto'
+      description={t(
+        'Choose an application and map models for the CC Switch provider import.'
+      )}
+      contentClassName='sm:max-w-lg'
+      contentHeight='min(70vh, 560px)'
       bodyClassName={
         currentConfig.modelFields.length === 1 ? 'space-y-4 pb-52' : 'space-y-4'
       }
@@ -218,6 +221,12 @@ export function CCSwitchDialog(props: Props) {
             />
           </div>
         ))}
+
+        <p className='text-muted-foreground text-xs leading-relaxed'>
+          {t(
+            'Only the primary model is required. Optional model fields can be left blank.'
+          )}
+        </p>
       </div>
     </Dialog>
   )

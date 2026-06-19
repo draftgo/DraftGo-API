@@ -117,6 +117,46 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
+type OptionsBulkUpdateRequest struct {
+	Options map[string]any `json:"options"`
+}
+
+func normalizeOptionValue(value any) string {
+	switch v := value.(type) {
+	case bool:
+		return common.Interface2String(v)
+	case float64:
+		return common.Interface2String(v)
+	case int:
+		return common.Interface2String(v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+func validateOptionUpdate(key string, value string) error {
+	switch key {
+	case "GroupRatio":
+		return ratio_setting.CheckGroupRatio(value)
+	case "TopupGroupRatio":
+		var parsed map[string]float64
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "UserUsableGroups":
+		var parsed map[string]string
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "GroupGroupRatio":
+		var parsed map[string]map[string]float64
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "AutoGroups":
+		var parsed []string
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "group_ratio_setting.group_special_usable_group":
+		var parsed map[string]map[string]string
+		return common.UnmarshalJsonStr(value, &parsed)
+	}
+	return nil
+}
+
 func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
@@ -127,16 +167,7 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
-	switch option.Value.(type) {
-	case bool:
-		option.Value = common.Interface2String(option.Value.(bool))
-	case float64:
-		option.Value = common.Interface2String(option.Value.(float64))
-	case int:
-		option.Value = common.Interface2String(option.Value.(int))
-	default:
-		option.Value = fmt.Sprintf("%v", option.Value)
-	}
+	option.Value = normalizeOptionValue(option.Value)
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
@@ -340,6 +371,50 @@ func UpdateOption(c *gin.Context) {
 	// 出于安全考虑只记录被修改的配置项名称，不记录配置值（可能含密钥等敏感信息）。
 	recordManageAudit(c, "option.update", map[string]interface{}{
 		"key": option.Key,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+	})
+}
+
+func UpdateOptionsBulk(c *gin.Context) {
+	var request OptionsBulkUpdateRequest
+	err := common.DecodeJson(c.Request.Body, &request)
+	if err != nil || len(request.Options) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的参数",
+		})
+		return
+	}
+
+	values := make(map[string]string, len(request.Options))
+	auditKeys := make([]string, 0, len(request.Options))
+	for key, rawValue := range request.Options {
+		value := normalizeOptionValue(rawValue)
+		if isPaymentComplianceOptionKey(key) {
+			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+			return
+		}
+		if err := validateOptionUpdate(key, value); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		values[key] = value
+		auditKeys = append(auditKeys, key)
+	}
+
+	err = model.UpdateOptionsBulk(values)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "option.update", map[string]interface{}{
+		"keys": strings.Join(auditKeys, ","),
 	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

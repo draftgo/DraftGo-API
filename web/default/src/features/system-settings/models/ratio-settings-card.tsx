@@ -28,7 +28,10 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { resetModelRatios } from '../api'
 import { SettingsPageTitleStatusPortal } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  useUpdateOption,
+  useUpdateOptionsBulk,
+} from '../hooks/use-update-option'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
@@ -147,6 +150,7 @@ export function RatioSettingsCard({
 }: RatioSettingsCardProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const updateOptionsBulk = useUpdateOptionsBulk()
   const queryClient = useQueryClient()
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -365,12 +369,23 @@ export function RatioSettingsCard({
         (key) => normalized[key] !== groupNormalizedDefaults.current[key]
       )
 
-      for (const key of updates) {
-        const apiKey = apiKeyMap[key] || key
-        await updateOption.mutateAsync({ key: apiKey, value: normalized[key] })
+      if (updates.length === 0) {
+        toast.info(t('No group ratio changes to save'))
+        return
       }
+
+      const options = Object.fromEntries(
+        updates.map((key) => {
+          const apiKey = apiKeyMap[key] || key
+          return [apiKey, normalized[key]]
+        })
+      )
+
+      await updateOptionsBulk.mutateAsync({ options })
+
+      groupNormalizedDefaults.current = normalized
     },
-    [updateOption]
+    [t, updateOptionsBulk]
   )
 
   const handleResetRatios = useCallback(() => {
@@ -415,7 +430,7 @@ export function RatioSettingsCard({
         <GroupRatioForm
           form={groupForm}
           onSave={saveGroupRatios}
-          isSaving={updateOption.isPending}
+          isSaving={updateOptionsBulk.isPending}
         />
       )
     }

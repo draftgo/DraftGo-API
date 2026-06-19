@@ -160,6 +160,8 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 			requestCount:   row.RequestCount,
 			successCount:   row.SuccessCount,
 			totalLatencyMs: row.TotalLatencyMs,
+			ttftSumMs:      row.TtftSumMs,
+			ttftCount:      row.TtftCount,
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
 		}
@@ -204,7 +206,7 @@ func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
 		if models[i].AvailabilityStatus != models[j].AvailabilityStatus {
 			return availabilityStatusRank(models[i].AvailabilityStatus) < availabilityStatusRank(models[j].AvailabilityStatus)
 		}
-		return models[i].RequestCount > models[j].RequestCount
+		return models[i].ModelName < models[j].ModelName
 	})
 
 	return SummaryAllResult{Models: models}, nil
@@ -225,7 +227,9 @@ func buildModelSummary(name string, total counters, availability model.ModelAvai
 		AutoTestIntervalMinute: autoTestIntervalMinutes,
 	}
 	if total.requestCount > 0 {
-		summary.AvgLatencyMs = total.totalLatencyMs / total.requestCount
+		if total.ttftCount > 0 {
+			summary.AvgLatencyMs = total.ttftSumMs / total.ttftCount
+		}
 		successRate := float64(total.successCount) / float64(total.requestCount) * 100
 		summary.SuccessRate = math.Round(successRate*100) / 100
 		if total.generationMs > 0 {

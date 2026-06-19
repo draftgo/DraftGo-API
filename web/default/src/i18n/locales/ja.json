@@ -4722,6 +4722,8 @@
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム",
     "Streaming first-token timeout (seconds)": "ストリーミング初回トークンタイムアウト（秒）",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "ストリーミングテキストリクエストでこの時間内に最初のトークンが届かない場合、現在のチャネルを失敗として次のチャネルを再試行します。0 で無効化します。"
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "ストリーミングテキストリクエストでこの時間内に最初のトークンが届かない場合、現在のチャネルを失敗として次のチャネルを再試行します。0 で無効化します。",
+    "Choose an application and map models for the CC Switch provider import.": "CC Switch プロバイダーのインポート用にアプリケーションを選択し、モデルを割り当てます。",
+    "Only the primary model is required. Optional model fields can be left blank.": "必須なのは主モデルのみです。任意のモデル欄は空のままでも構いません。"
   }
 }

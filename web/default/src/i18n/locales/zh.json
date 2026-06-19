@@ -4809,6 +4809,8 @@
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放",
     "Streaming first-token timeout (seconds)": "流式首字超时（秒）",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道。0 表示关闭此规则。"
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道。0 表示关闭此规则。",
+    "Choose an application and map models for the CC Switch provider import.": "选择应用并为 CC Switch 服务商导入映射模型。",
+    "Only the primary model is required. Optional model fields can be left blank.": "仅主模型必填，其他模型字段可以留空。"
   }
 }

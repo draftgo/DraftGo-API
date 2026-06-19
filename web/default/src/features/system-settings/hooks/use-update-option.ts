@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import i18next from 'i18next'
 import { toast } from 'sonner'
-import { updateSystemOption } from '../api'
-import type { UpdateOptionRequest } from '../types'
+import { updateSystemOption, updateSystemOptionsBulk } from '../api'
+import type { UpdateOptionRequest, UpdateOptionsBulkRequest } from '../types'
 
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = [
@@ -39,6 +39,26 @@ const STATUS_RELATED_KEYS = [
   'general_setting.custom_currency_exchange_rate',
 ]
 
+const PRICING_RELATED_KEYS = [
+  'ModelPrice',
+  'ModelRatio',
+  'CompletionRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+  'GroupRatio',
+  'TopupGroupRatio',
+  'UserUsableGroups',
+  'GroupGroupRatio',
+  'AutoGroups',
+  'DefaultUseAutoGroup',
+  'group_ratio_setting.group_special_usable_group',
+  'billing_setting.billing_mode',
+  'billing_setting.billing_expr',
+]
+
 export function useUpdateOption() {
   const queryClient = useQueryClient()
 
@@ -48,6 +68,10 @@ export function useUpdateOption() {
       if (data.success) {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
+
+        if (PRICING_RELATED_KEYS.includes(variables.key)) {
+          queryClient.invalidateQueries({ queryKey: ['pricing'] })
+        }
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.includes(variables.key)) {
@@ -63,6 +87,48 @@ export function useUpdateOption() {
       } else {
         toast.error(data.message || i18next.t('Failed to update setting'))
       }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || i18next.t('Failed to update setting'))
+    },
+  })
+}
+
+export function useUpdateOptionsBulk() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (request: UpdateOptionsBulkRequest) => {
+      const data = await updateSystemOptionsBulk(request)
+      if (!data.success) {
+        throw new Error(data.message || i18next.t('Failed to update setting'))
+      }
+      return data
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      if (
+        Object.keys(variables.options).some((key) =>
+          PRICING_RELATED_KEYS.includes(key)
+        )
+      ) {
+        queryClient.invalidateQueries({ queryKey: ['pricing'] })
+      }
+
+      if (
+        Object.keys(variables.options).some((key) =>
+          STATUS_RELATED_KEYS.includes(key)
+        )
+      ) {
+        queryClient.invalidateQueries({ queryKey: ['status'] })
+        try {
+          window.localStorage.removeItem('status')
+        } catch {
+          /* empty */
+        }
+      }
+
+      toast.success(i18next.t('Setting updated successfully'))
     },
     onError: (error: Error) => {
       toast.error(error.message || i18next.t('Failed to update setting'))

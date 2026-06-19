@@ -53,18 +53,18 @@ type ModelSummary struct {
 	SuccessRate            float64   `json:"success_rate"`
 	AvgTps                 float64   `json:"avg_tps"`
 	RecentSuccessRates     []float64 `json:"recent_success_rates,omitempty"`
-	RequestCount           int64     `json:"request_count"`
+	RequestCount           int64     `json:"-"`
 	AvailabilityPct        float64   `json:"availability_pct"`
 	AvailabilityStatus     string    `json:"availability_status"`
-	AvailableChannels      int       `json:"available_channels"`
-	TotalChannels          int       `json:"total_channels"`
-	TestedChannels         int       `json:"tested_channels"`
-	FreshTestedChannels    int       `json:"fresh_tested_channels"`
-	LastTestTime           int64     `json:"last_test_time"`
-	AvgTestLatencyMs       int64     `json:"avg_test_latency_ms"`
-	AutoTestEnabled        bool      `json:"auto_test_enabled"`
-	AutoTestIntervalMinute float64   `json:"auto_test_interval_minutes"`
-	HealthSource           string    `json:"health_source"`
+	AvailableChannels      int       `json:"-"`
+	TotalChannels          int       `json:"-"`
+	TestedChannels         int       `json:"-"`
+	FreshTestedChannels    int       `json:"-"`
+	LastTestTime           int64     `json:"-"`
+	AvgTestLatencyMs       int64     `json:"-"`
+	AutoTestEnabled        bool      `json:"-"`
+	AutoTestIntervalMinute float64   `json:"-"`
+	HealthSource           string    `json:"-"`
 }
 
 type SummaryAllResult struct {

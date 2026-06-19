@@ -17,8 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
-import type { TFunction } from 'i18next'
-import { Activity, Clock3, Gauge, RadioTower } from 'lucide-react'
+import { Activity, Gauge, RadioTower, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Progress } from '@/components/ui/progress'
@@ -29,7 +28,6 @@ import {
 import type { PricingModel } from '../types'
 import {
   getAvailabilityConfig,
-  getHealthSourceLabel,
   type ModelPerfBadgeData,
 } from './model-perf-badge'
 
@@ -56,18 +54,6 @@ function statusRank(status: string | undefined): number {
     default:
       return 6
   }
-}
-
-function formatLastTest(ts: number | undefined, t: TFunction) {
-  if (!ts) return t('Never tested')
-  const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000 - ts))
-  if (diffSeconds < 60) return t('Just now')
-  const minutes = Math.floor(diffSeconds / 60)
-  if (minutes < 60) return t('{{count}} min ago', { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 48) return t('{{count}} h ago', { count: hours })
-  const days = Math.floor(hours / 24)
-  return t('{{count}} d ago', { count: days })
 }
 
 export function ModelHealthBoard(props: ModelHealthBoardProps) {
@@ -141,14 +127,12 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
           const status = getAvailabilityConfig(perf?.availability_status, t)
           const pct = perf?.availability_pct ?? 100
           const hasPct = Number.isFinite(pct)
-          const available = perf?.available_channels ?? 0
-          const total = perf?.total_channels ?? 0
           return (
             <button
               key={model.id ?? model.model_name}
               type='button'
               onClick={() => props.onModelClick(model.model_name)}
-              className='hover:bg-muted/30 grid w-full grid-cols-1 gap-3 border-b p-3 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(140px,0.6fr)] md:items-center'
+              className='hover:bg-muted/30 grid w-full grid-cols-1 gap-3 border-b p-3 text-left transition-colors last:border-b-0 md:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.8fr)_minmax(160px,0.6fr)] md:items-center'
             >
               <div className='min-w-0'>
                 <div className='flex min-w-0 items-center gap-2'>
@@ -189,38 +173,14 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
                 />
               </div>
 
-              <div className='grid grid-cols-2 gap-2 text-xs sm:grid-cols-4 md:grid-cols-2 xl:grid-cols-4'>
-                <div>
-                  <div className='text-muted-foreground'>{t('Channels')}</div>
-                  <div className='font-mono font-medium'>
-                    {available}/{total}
-                  </div>
+              <div className='text-xs'>
+                <div className='text-muted-foreground flex items-center gap-1.5'>
+                  <Timer className='size-3.5' />
+                  <span>{t('Average TTFT')}</span>
                 </div>
-                <div>
-                  <div className='text-muted-foreground'>{t('Source')}</div>
-                  <div className='font-medium'>
-                    {getHealthSourceLabel(perf?.health_source, t)}
-                  </div>
+                <div className='mt-1 font-mono font-medium'>
+                  {formatLatency(perf?.avg_latency_ms ?? 0)}
                 </div>
-                <div>
-                  <div className='text-muted-foreground'>{t('Latency')}</div>
-                  <div className='font-mono font-medium'>
-                    {formatLatency(
-                      perf?.avg_latency_ms || perf?.avg_test_latency_ms || 0
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className='text-muted-foreground'>{t('Requests')}</div>
-                  <div className='font-mono font-medium'>
-                    {perf?.request_count ?? 0}
-                  </div>
-                </div>
-              </div>
-
-              <div className='text-muted-foreground flex items-center gap-1.5 text-xs'>
-                <Clock3 className='size-3.5' />
-                <span>{formatLastTest(perf?.last_test_time, t)}</span>
               </div>
             </button>
           )
