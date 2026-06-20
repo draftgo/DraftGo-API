@@ -53,7 +53,7 @@ type ModelSummary struct {
 	SuccessRate            float64   `json:"success_rate"`
 	AvgTps                 float64   `json:"avg_tps"`
 	RecentSuccessRates     []float64 `json:"recent_success_rates,omitempty"`
-	RequestCount           int64     `json:"-"`
+	RequestCount           int64     `json:"request_count"`
 	AvailabilityPct        float64   `json:"availability_pct"`
 	AvailabilityStatus     string    `json:"availability_status"`
 	AvailableChannels      int       `json:"-"`

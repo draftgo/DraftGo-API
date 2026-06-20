@@ -26,10 +26,13 @@ import {
 } from '@/features/performance-metrics/lib/format'
 import type { AvailabilityStatus } from '@/features/performance-metrics/types'
 
+const MIN_REQUESTS_FOR_TRAFFIC_STATUS = 20
+
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
+  request_count?: number
   availability_pct?: number
   availability_status?: AvailabilityStatus
   recent_success_rates?: number[]
@@ -37,6 +40,12 @@ export type ModelPerfBadgeData = {
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   perf: ModelPerfBadgeData | undefined
+}
+
+export function hasMeaningfulPerfTraffic(
+  perf: ModelPerfBadgeData | undefined
+): boolean {
+  return (perf?.request_count ?? 0) >= MIN_REQUESTS_FOR_TRAFFIC_STATUS
 }
 
 function formatCompactNumber(value: number): string {
@@ -73,9 +82,9 @@ export function getAvailabilityConfig(
 function getStatusBars(
   recentRates: number[],
   successRate: number,
-  availabilityStatus: AvailabilityStatus | undefined
+  hasTrafficData: boolean
 ) {
-  if (availabilityStatus === 'healthy') {
+  if (!hasTrafficData) {
     return [100, 100, 100]
   }
 
@@ -100,12 +109,15 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
       : (props.perf?.availability_pct ?? 100)
   const avgLatencyMs = props.perf?.avg_latency_ms ?? 0
   const avgTps = props.perf?.avg_tps ?? 0
-  const availabilityStatus = props.perf?.availability_status
+  const hasTrafficData = hasMeaningfulPerfTraffic(props.perf)
+  const availabilityStatus = hasTrafficData
+    ? props.perf?.availability_status
+    : 'healthy'
   const availability = getAvailabilityConfig(availabilityStatus, t)
   const recentRates =
     props.perf?.recent_success_rates?.filter((rate) => Number.isFinite(rate)) ??
     []
-  const statusBars = getStatusBars(recentRates, successRate, availabilityStatus)
+  const statusBars = getStatusBars(recentRates, successRate, hasTrafficData)
 
   return (
     <div

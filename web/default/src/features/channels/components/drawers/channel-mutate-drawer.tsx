@@ -304,6 +304,7 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
   const [advancedCustomEditorOpen, setAdvancedCustomEditorOpen] =
     useState(false)
+  const loadedChannelFormKeyRef = useRef<string | null>(null)
 
   const isEditing = Boolean(currentRow)
   const channelId = currentRow?.id ?? null
@@ -599,6 +600,9 @@ export function ChannelMutateDrawer({
   // Load channel data into form when editing
   useEffect(() => {
     if (isEditing && channelData?.data) {
+      const formKey = `${channelData.data.id}:${open}`
+      if (loadedChannelFormKeyRef.current === formKey) return
+      loadedChannelFormKeyRef.current = formKey
       const defaults = transformChannelToFormDefaults(channelData.data)
       form.reset(defaults)
       setAdvancedSettingsOpen(
@@ -612,13 +616,14 @@ export function ChannelMutateDrawer({
       initialStatusCodeMappingRef.current =
         channelData.data.status_code_mapping || ''
     } else if (!isEditing) {
+      loadedChannelFormKeyRef.current = open ? 'create' : null
       form.reset(CHANNEL_FORM_DEFAULT_VALUES)
       setAdvancedSettingsOpen(false)
       initialModelsRef.current = []
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
     }
-  }, [isEditing, channelData, form])
+  }, [isEditing, channelData, form, open])
 
   // Handle type change - set default values for specific types
   useEffect(() => {
@@ -1071,6 +1076,7 @@ export function ChannelMutateDrawer({
     (v: boolean) => {
       onOpenChange(v)
       if (!v) {
+        loadedChannelFormKeyRef.current = null
         form.reset(CHANNEL_FORM_DEFAULT_VALUES)
         setAdvancedSettingsOpen(false)
       }
@@ -1157,7 +1163,7 @@ export function ChannelMutateDrawer({
                                 placeholder={t('Select channel type')}
                                 searchPlaceholder={t('Search channel type...')}
                                 emptyText={t('No channel type found.')}
-                                allowCustomValue
+                                disablePortal
                               />
                             </FormControl>
                             <FormMessage />

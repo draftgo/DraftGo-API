@@ -28,6 +28,7 @@ import {
 import type { PricingModel } from '../types'
 import {
   getAvailabilityConfig,
+  hasMeaningfulPerfTraffic,
   type ModelPerfBadgeData,
 } from './model-perf-badge'
 
@@ -56,6 +57,10 @@ function statusRank(status: string | undefined): number {
   }
 }
 
+function displayAvailabilityStatus(perf: ModelPerfBadgeData | undefined) {
+  return hasMeaningfulPerfTraffic(perf) ? perf?.availability_status : 'healthy'
+}
+
 export function ModelHealthBoard(props: ModelHealthBoardProps) {
   const { t } = useTranslation()
 
@@ -67,11 +72,15 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
       }))
       .sort((a, b) => {
         const rank =
-          statusRank(a.perf?.availability_status) -
-          statusRank(b.perf?.availability_status)
+          statusRank(displayAvailabilityStatus(a.perf)) -
+          statusRank(displayAvailabilityStatus(b.perf))
         if (rank !== 0) return rank
-        const aPct = a.perf?.availability_pct ?? -1
-        const bPct = b.perf?.availability_pct ?? -1
+        const aPct = hasMeaningfulPerfTraffic(a.perf)
+          ? (a.perf?.availability_pct ?? -1)
+          : 100
+        const bPct = hasMeaningfulPerfTraffic(b.perf)
+          ? (b.perf?.availability_pct ?? -1)
+          : 100
         if (aPct !== bPct) return aPct - bPct
         return a.model.model_name.localeCompare(b.model.model_name)
       })
@@ -82,7 +91,7 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
     let attention = 0
     let down = 0
     for (const row of rows) {
-      const status = row.perf?.availability_status
+      const status = displayAvailabilityStatus(row.perf)
       if (status === 'healthy') healthy++
       else if (status === 'down') down++
       else attention++
@@ -124,8 +133,11 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
 
       <div className='overflow-hidden rounded-lg border'>
         {rows.map(({ model, perf }) => {
-          const status = getAvailabilityConfig(perf?.availability_status, t)
-          const pct = perf?.availability_pct ?? 100
+          const availabilityStatus = displayAvailabilityStatus(perf)
+          const status = getAvailabilityConfig(availabilityStatus, t)
+          const pct = hasMeaningfulPerfTraffic(perf)
+            ? (perf?.availability_pct ?? 100)
+            : 100
           const hasPct = Number.isFinite(pct)
           return (
             <button
@@ -159,15 +171,15 @@ export function ModelHealthBoard(props: ModelHealthBoardProps) {
                   value={hasPct ? (pct ?? 0) : 0}
                   className={cn(
                     'h-1.5',
-                    perf?.availability_status === 'down' &&
+                    availabilityStatus === 'down' &&
                       '[&_[data-slot=progress-indicator]]:bg-red-500',
-                    perf?.availability_status === 'degraded' &&
+                    availabilityStatus === 'degraded' &&
                       '[&_[data-slot=progress-indicator]]:bg-orange-500',
-                    perf?.availability_status === 'stale' &&
+                    availabilityStatus === 'stale' &&
                       '[&_[data-slot=progress-indicator]]:bg-sky-500',
-                    perf?.availability_status === 'warning' &&
+                    availabilityStatus === 'warning' &&
                       '[&_[data-slot=progress-indicator]]:bg-amber-500',
-                    perf?.availability_status === 'healthy' &&
+                    availabilityStatus === 'healthy' &&
                       '[&_[data-slot=progress-indicator]]:bg-emerald-500'
                   )}
                 />

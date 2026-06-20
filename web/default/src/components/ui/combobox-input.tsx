@@ -46,6 +46,7 @@ interface ComboboxInputProps {
   className?: string
   id?: string
   allowCustomValue?: boolean
+  disablePortal?: boolean
 }
 
 export function ComboboxInput({
@@ -57,6 +58,7 @@ export function ComboboxInput({
   className,
   id,
   allowCustomValue = false,
+  disablePortal = false,
 }: ComboboxInputProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
@@ -218,77 +220,86 @@ export function ComboboxInput({
     open &&
     (filteredOptions.length > 0 || (allowCustomValue && searchValue.trim()))
 
-  const dropdown =
-    showDropdown && dropdownPosition
-      ? createPortal(
-          <div
-            ref={dropdownRef}
-            className='bg-popover text-popover-foreground fixed z-[1000] rounded-md border shadow-lg'
-            style={{
-              left: dropdownPosition.left,
-              width: dropdownPosition.width,
-              top: dropdownPosition.top,
-              bottom: dropdownPosition.bottom,
-              maxHeight: dropdownPosition.maxHeight,
-            }}
-            onMouseDownCapture={(e) => e.stopPropagation()}
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {filteredOptions.length > 0 ? (
-              <ul
-                ref={listRef}
-                role='listbox'
-                className='overflow-y-auto p-1 overscroll-contain'
-                style={{ maxHeight: dropdownPosition.maxHeight }}
-              >
-                {filteredOptions.map((option, index) => (
-                  <li
-                    key={option.value}
-                    role='option'
-                    aria-selected={value === option.value}
-                    data-highlighted={index === highlightedIndex}
-                    className={cn(
-                      'relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm select-none',
-                      index === highlightedIndex &&
-                        'bg-accent text-accent-foreground',
-                      value === option.value && 'font-medium'
-                    )}
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      handleSelect(option.value)
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        'size-4 shrink-0',
-                        value === option.value ? 'opacity-100' : 'opacity-0'
-                      )}
-                    />
-                    {option.icon && <span>{option.icon}</span>}
-                    <span className='truncate'>{option.label}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className='px-2 py-6 text-center text-sm'>
-                {t(emptyText)}
-                {allowCustomValue && searchValue.trim() && (
-                  <div className='text-muted-foreground mt-1 text-xs'>
-                    {t('Press Enter to use "{{value}}"', {
-                      value: searchValue.trim(),
-                    })}
-                  </div>
+  const dropdownContent = showDropdown ? (
+    <div
+      ref={dropdownRef}
+      className={cn(
+        'bg-popover text-popover-foreground z-[1000] rounded-md border shadow-lg',
+        disablePortal ? 'absolute top-full right-0 left-0 mt-1' : 'fixed'
+      )}
+      style={
+        disablePortal
+          ? { maxHeight: dropdownPosition?.maxHeight ?? 280 }
+          : {
+              left: dropdownPosition?.left,
+              width: dropdownPosition?.width,
+              top: dropdownPosition?.top,
+              bottom: dropdownPosition?.bottom,
+              maxHeight: dropdownPosition?.maxHeight,
+            }
+      }
+      onMouseDownCapture={(e) => e.stopPropagation()}
+      onPointerDownCapture={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {filteredOptions.length > 0 ? (
+        <ul
+          ref={listRef}
+          role='listbox'
+          className='overflow-y-auto p-1 overscroll-contain'
+          style={{ maxHeight: dropdownPosition?.maxHeight ?? 280 }}
+        >
+          {filteredOptions.map((option, index) => (
+            <li
+              key={option.value}
+              role='option'
+              aria-selected={value === option.value}
+              data-highlighted={index === highlightedIndex}
+              className={cn(
+                'relative flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm select-none',
+                index === highlightedIndex && 'bg-accent text-accent-foreground',
+                value === option.value && 'font-medium'
+              )}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleSelect(option.value)
+              }}
+            >
+              <Check
+                className={cn(
+                  'size-4 shrink-0',
+                  value === option.value ? 'opacity-100' : 'opacity-0'
                 )}
-              </div>
-            )}
-          </div>,
-          document.body
-        )
-      : null
+              />
+              {option.icon && <span>{option.icon}</span>}
+              <span className='truncate'>{option.label}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className='px-2 py-6 text-center text-sm'>
+          {t(emptyText)}
+          {allowCustomValue && searchValue.trim() && (
+            <div className='text-muted-foreground mt-1 text-xs'>
+              {t('Press Enter to use "{{value}}"', {
+                value: searchValue.trim(),
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null
+
+  const dropdown =
+    dropdownContent && disablePortal
+      ? dropdownContent
+      : dropdownContent && dropdownPosition
+        ? createPortal(dropdownContent, document.body)
+        : null
 
   return (
     <div ref={containerRef} className='relative'>

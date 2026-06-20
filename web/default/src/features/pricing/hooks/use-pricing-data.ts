@@ -20,7 +20,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useStatus } from '@/hooks/use-status'
 import { getPricing } from '../api'
-import type { PricingRateLimitConfig } from '../types'
+import type { PricingData, PricingModel, PricingRateLimitConfig } from '../types'
 
 function readStatusValue(status: unknown, key: string): unknown {
   if (!status || typeof status !== 'object') return undefined
@@ -75,6 +75,33 @@ function parseGroupRateLimits(value: unknown): Record<string, [number, number]> 
   return limits
 }
 
+function normalizePricingData(data: PricingData | undefined) {
+  const models = Array.isArray(data?.data) ? data.data : []
+  const vendors = Array.isArray(data?.vendors) ? data.vendors : []
+  const groupRatio =
+    data?.group_ratio && typeof data.group_ratio === 'object'
+      ? data.group_ratio
+      : {}
+  const usableGroup =
+    data?.usable_group && typeof data.usable_group === 'object'
+      ? data.usable_group
+      : {}
+  const supportedEndpoint =
+    data?.supported_endpoint && typeof data.supported_endpoint === 'object'
+      ? data.supported_endpoint
+      : {}
+  const autoGroups = Array.isArray(data?.auto_groups) ? data.auto_groups : []
+
+  return {
+    models,
+    vendors,
+    groupRatio,
+    usableGroup,
+    supportedEndpoint,
+    autoGroups,
+  }
+}
+
 export function usePricingData() {
   const { status } = useStatus()
 
@@ -109,12 +136,14 @@ export function usePricingData() {
     [status]
   )
 
-  const models = useMemo(() => {
-    if (!data?.data || !data?.vendors) return []
+  const normalized = useMemo(() => normalizePricingData(data), [data])
 
-    const vendorMap = new Map(data.vendors.map((v) => [v.id, v]))
+  const models = useMemo<PricingModel[]>(() => {
+    if (normalized.models.length === 0) return []
 
-    return data.data.map((model) => {
+    const vendorMap = new Map(normalized.vendors.map((v) => [v.id, v]))
+
+    return normalized.models.map((model) => {
       const vendor = model.vendor_id
         ? vendorMap.get(model.vendor_id)
         : undefined
@@ -124,18 +153,26 @@ export function usePricingData() {
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
-        group_ratio: data.group_ratio,
+        enable_groups: Array.isArray(model.enable_groups)
+          ? model.enable_groups
+          : [],
+        supported_endpoint_types: Array.isArray(
+          model.supported_endpoint_types
+        )
+          ? model.supported_endpoint_types
+          : [],
+        group_ratio: normalized.groupRatio,
       }
     })
-  }, [data])
+  }, [normalized])
 
   return {
     models,
-    vendors: data?.vendors ?? [],
-    groupRatio: data?.group_ratio ?? {},
-    usableGroup: data?.usable_group ?? {},
-    endpointMap: data?.supported_endpoint ?? {},
-    autoGroups: data?.auto_groups ?? [],
+    vendors: normalized.vendors,
+    groupRatio: normalized.groupRatio,
+    usableGroup: normalized.usableGroup,
+    endpointMap: normalized.supportedEndpoint,
+    autoGroups: normalized.autoGroups,
     isLoading,
     error,
     refetch,

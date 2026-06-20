@@ -51,6 +51,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
     staleTime: 60 * 1000,
     retry: false,
     enabled: !props.perfMap,
+    throwOnError: false,
   })
 
   const pagedModels = useMemo(() => {
@@ -63,8 +64,14 @@ export function ModelCardGrid(props: ModelCardGridProps) {
       return props.perfMap
     }
     const map = new Map<string, ModelPerfBadgeData>()
-    for (const model of perfQuery.data?.data?.models ?? []) {
-      map.set(model.model_name, model)
+    const models = perfQuery.data?.data?.models
+    if (!Array.isArray(models)) {
+      return map
+    }
+    for (const model of models) {
+      if (model?.model_name) {
+        map.set(model.model_name, model)
+      }
     }
     return map
   }, [perfQuery.data, props.perfMap])

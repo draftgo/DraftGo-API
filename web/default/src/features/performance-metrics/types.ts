@@ -48,6 +48,7 @@ export type PerfModelSummary = {
   avg_latency_ms: number
   success_rate: number
   avg_tps: number
+  request_count?: number
   recent_success_rates?: number[]
   availability_pct?: number
   availability_status?: AvailabilityStatus
