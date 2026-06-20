@@ -43,7 +43,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 
 const behaviorSchema = z.object({
-  RetryTimes: z.coerce.number().min(0).max(10),
+  RetryTimes: z.coerce.number().min(0).max(20),
   DefaultCollapseSidebar: z.boolean(),
   DemoSiteEnabled: z.boolean(),
   SelfUseModeEnabled: z.boolean(),
@@ -96,12 +96,12 @@ export function SystemBehaviorSection({
                   <Input
                     type='number'
                     min='0'
-                    max='10'
+                    max='20'
                     {...safeNumberFieldProps(field)}
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Number of times to retry failed requests (0-10)')}
+                  {t('Number of times to retry failed requests (0-20)')}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
