@@ -26,28 +26,10 @@ import {
 } from './section-registry.tsx'
 
 const defaultOperationsSettings: OperationsSettings = {
-  RetryTimes: 0,
   DefaultCollapseSidebar: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
-  ChannelDisableThreshold: '',
-  StreamFirstResponseTimeoutSeconds: '',
-  ChannelNonStreamSlowRequestThreshold: '',
-  ChannelDisableWindowMinutes: '5',
-  ChannelDisableFailureThreshold: '3',
   QuotaRemindThreshold: '',
-  AutomaticDisableChannelEnabled: false,
-  AutomaticEnableChannelEnabled: false,
-  AutomaticDisableKeywords: '',
-  AutomaticDisableStatusCodes: '401',
-  AutomaticRetryStatusCodes:
-    '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
-  'monitor_setting.auto_test_channel_enabled': false,
-  'monitor_setting.auto_test_channel_minutes': 10,
-  'monitor_setting.recovery_mode': 'follow',
-  'monitor_setting.recovery_probe_minutes': 5,
-  'monitor_setting.recovery_probe_count': 1,
-  'monitor_setting.recovery_threshold_seconds': 15,
   SMTPServer: '',
   SMTPPort: '',
   SMTPAccount: '',
