@@ -70,6 +70,25 @@ export function getAvailabilityConfig(
   }
 }
 
+function getStatusBars(
+  recentRates: number[],
+  successRate: number,
+  availabilityStatus: AvailabilityStatus | undefined
+) {
+  if (availabilityStatus === 'healthy') {
+    return [100, 100, 100]
+  }
+
+  if (recentRates.length > 0) {
+    return [
+      ...Array(Math.max(0, 3 - recentRates.length)).fill(null),
+      ...recentRates.slice(-3),
+    ].slice(-3)
+  }
+
+  return [null, null, successRate].slice(-3)
+}
+
 export const ModelPerfBadge = memo(function ModelPerfBadge(
   props: ModelPerfBadgeProps
 ) {
@@ -81,16 +100,12 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
       : (props.perf?.availability_pct ?? 100)
   const avgLatencyMs = props.perf?.avg_latency_ms ?? 0
   const avgTps = props.perf?.avg_tps ?? 0
-  const availability = getAvailabilityConfig(props.perf?.availability_status, t)
+  const availabilityStatus = props.perf?.availability_status
+  const availability = getAvailabilityConfig(availabilityStatus, t)
   const recentRates =
     props.perf?.recent_success_rates?.filter((rate) => Number.isFinite(rate)) ??
     []
-  const statusRates =
-    recentRates.length > 0 ? recentRates.slice(-3) : [successRate]
-  const statusBars = [
-    ...Array(Math.max(0, 3 - statusRates.length)).fill(null),
-    ...statusRates,
-  ].slice(-3)
+  const statusBars = getStatusBars(recentRates, successRate, availabilityStatus)
 
   return (
     <div

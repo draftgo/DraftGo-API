@@ -39,6 +39,7 @@ export function GeneralError({
 }: GeneralErrorProps) {
   const { t } = useTranslation()
   const status = getHttpStatus(error)
+  const displayStatus = status ?? (error ? undefined : 500)
   const isRateLimited = status === 429
   const title = isRateLimited
     ? t('Too many requests')
@@ -50,9 +51,9 @@ export function GeneralError({
   return (
     <div className={cn('h-svh w-full', className)}>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        {!minimal && (
+        {!minimal && displayStatus && (
           <h1 className='text-[7rem] leading-tight font-bold'>
-            {status ?? 500}
+            {displayStatus}
           </h1>
         )}
         <span className='font-medium'>{title}</span>
