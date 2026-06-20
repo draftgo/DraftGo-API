@@ -34,6 +34,7 @@ import {
   getSavedChartPreferences,
   saveChartPreferences,
 } from './lib'
+import { DashboardPanelErrorBoundary } from './components/dashboard-panel-error-boundary'
 import {
   type DashboardSectionId,
   DASHBOARD_DEFAULT_SECTION,
@@ -217,6 +218,15 @@ export function Dashboard() {
         />
       </>
     ) : null
+  const modelsPanelResetKey = [
+    activeSection,
+    modelFilters.start_timestamp?.getTime() ?? '',
+    modelFilters.end_timestamp?.getTime() ?? '',
+    modelFilters.time_granularity ?? '',
+    modelFilters.username ?? '',
+    chartPreferences.consumptionDistributionChart,
+    chartPreferences.modelAnalyticsChart,
+  ].join(':')
 
   return (
     <SectionPageLayout>
@@ -249,53 +259,65 @@ export function Dashboard() {
           {activeSection === 'models' && (
             <>
               <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
-                  <LazyLogStatCards
-                    filters={modelFilters}
-                    onDataUpdate={handleDataUpdate}
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary resetKey={modelsPanelResetKey}>
+                  <Suspense fallback={<LogStatCardsFallback />}>
+                    <LazyLogStatCards
+                      filters={modelFilters}
+                      onDataUpdate={handleDataUpdate}
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
               {isAdmin && (
                 <FadeIn delay={0.05}>
-                  <Suspense fallback={<PerformanceOverviewFallback />}>
-                    <LazyPerformanceOverview />
-                  </Suspense>
+                  <DashboardPanelErrorBoundary resetKey={modelsPanelResetKey}>
+                    <Suspense fallback={<PerformanceOverviewFallback />}>
+                      <LazyPerformanceOverview />
+                    </Suspense>
+                  </DashboardPanelErrorBoundary>
                 </FadeIn>
               )}
               <FadeIn delay={0.1}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyConsumptionDistributionChart
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartType={
-                      chartPreferences.consumptionDistributionChart
-                    }
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary resetKey={modelsPanelResetKey}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyConsumptionDistributionChart
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartType={
+                        chartPreferences.consumptionDistributionChart
+                      }
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
               <FadeIn delay={0.15}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyModelCharts
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartTab={chartPreferences.modelAnalyticsChart}
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
-                  />
-                </Suspense>
+                <DashboardPanelErrorBoundary resetKey={modelsPanelResetKey}>
+                  <Suspense fallback={<ModelChartsFallback />}>
+                    <LazyModelCharts
+                      data={modelData}
+                      loading={dataLoading}
+                      defaultChartTab={chartPreferences.modelAnalyticsChart}
+                      timeGranularity={
+                        modelFilters.time_granularity ||
+                        DEFAULT_TIME_GRANULARITY
+                      }
+                    />
+                  </Suspense>
+                </DashboardPanelErrorBoundary>
               </FadeIn>
             </>
           )}
           {activeSection === 'users' && (
             <FadeIn>
-              <Suspense fallback={<ModelChartsFallback />}>
-                <LazyUserCharts />
-              </Suspense>
+              <DashboardPanelErrorBoundary resetKey={activeSection}>
+                <Suspense fallback={<ModelChartsFallback />}>
+                  <LazyUserCharts />
+                </Suspense>
+              </DashboardPanelErrorBoundary>
             </FadeIn>
           )}
         </div>

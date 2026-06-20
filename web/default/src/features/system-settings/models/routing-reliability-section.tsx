@@ -57,6 +57,10 @@ const routingReliabilitySchema = z
   .object({
     RetryTimes: z.coerce.number().min(0).max(20),
     ChannelDisableThreshold: numericString,
+    StreamFirstResponseTimeoutSeconds: numericString,
+    ChannelNonStreamSlowRequestThreshold: numericString,
+    ChannelDisableWindowMinutes: numericString,
+    ChannelDisableFailureThreshold: numericString,
     AutomaticDisableChannelEnabled: z.boolean(),
     AutomaticEnableChannelEnabled: z.boolean(),
     AutomaticDisableKeywords: z.string(),
@@ -68,6 +72,18 @@ const routingReliabilitySchema = z
         .number()
         .int()
         .min(1, 'Interval must be at least 1 minute'),
+      recovery_mode: z.enum(['follow', 'independent']),
+      recovery_probe_minutes: z.coerce
+        .number()
+        .positive('Interval must be greater than 0 minutes'),
+      recovery_probe_count: z.coerce
+        .number()
+        .int()
+        .min(1, 'Probe attempts must be at least 1'),
+      recovery_threshold_seconds: z.coerce
+        .number()
+        .int()
+        .min(0, 'Threshold must be non-negative'),
     }),
   })
   .superRefine((values, ctx) => {
@@ -105,6 +121,10 @@ type RoutingReliabilitySectionProps = {
   defaultValues: {
     RetryTimes: number
     ChannelDisableThreshold: string
+    StreamFirstResponseTimeoutSeconds: string
+    ChannelNonStreamSlowRequestThreshold: string
+    ChannelDisableWindowMinutes: string
+    ChannelDisableFailureThreshold: string
     AutomaticDisableChannelEnabled: boolean
     AutomaticEnableChannelEnabled: boolean
     AutomaticDisableKeywords: string
@@ -112,6 +132,10 @@ type RoutingReliabilitySectionProps = {
     AutomaticRetryStatusCodes: string
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
+    'monitor_setting.recovery_mode': string
+    'monitor_setting.recovery_probe_minutes': number
+    'monitor_setting.recovery_probe_count': number
+    'monitor_setting.recovery_threshold_seconds': number
   }
 }
 
@@ -122,6 +146,10 @@ function normalizeLineEndings(value: string) {
 type NormalizedRoutingReliabilityValues = {
   RetryTimes: number
   ChannelDisableThreshold: string
+  StreamFirstResponseTimeoutSeconds: string
+  ChannelNonStreamSlowRequestThreshold: string
+  ChannelDisableWindowMinutes: string
+  ChannelDisableFailureThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string
@@ -129,6 +157,10 @@ type NormalizedRoutingReliabilityValues = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.recovery_mode': string
+  'monitor_setting.recovery_probe_minutes': number
+  'monitor_setting.recovery_probe_count': number
+  'monitor_setting.recovery_threshold_seconds': number
 }
 
 const buildFormDefaults = (
@@ -136,6 +168,12 @@ const buildFormDefaults = (
 ): RoutingReliabilityFormInput => ({
   RetryTimes: defaults.RetryTimes ?? 0,
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
+  StreamFirstResponseTimeoutSeconds:
+    defaults.StreamFirstResponseTimeoutSeconds ?? '',
+  ChannelNonStreamSlowRequestThreshold:
+    defaults.ChannelNonStreamSlowRequestThreshold ?? '',
+  ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
+  ChannelDisableFailureThreshold: defaults.ChannelDisableFailureThreshold ?? '3',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -148,6 +186,14 @@ const buildFormDefaults = (
       defaults['monitor_setting.auto_test_channel_enabled'],
     auto_test_channel_minutes:
       defaults['monitor_setting.auto_test_channel_minutes'],
+    recovery_mode:
+      (defaults['monitor_setting.recovery_mode'] as 'follow' | 'independent') ??
+      'follow',
+    recovery_probe_minutes:
+      defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+    recovery_probe_count: defaults['monitor_setting.recovery_probe_count'] ?? 1,
+    recovery_threshold_seconds:
+      defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
   },
 })
 
@@ -156,6 +202,18 @@ const normalizeDefaults = (
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: defaults.RetryTimes ?? 0,
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
+  StreamFirstResponseTimeoutSeconds: (
+    defaults.StreamFirstResponseTimeoutSeconds ?? ''
+  ).trim(),
+  ChannelNonStreamSlowRequestThreshold: (
+    defaults.ChannelNonStreamSlowRequestThreshold ?? ''
+  ).trim(),
+  ChannelDisableWindowMinutes: (
+    defaults.ChannelDisableWindowMinutes ?? '5'
+  ).trim(),
+  ChannelDisableFailureThreshold: (
+    defaults.ChannelDisableFailureThreshold ?? '3'
+  ).trim(),
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -171,6 +229,14 @@ const normalizeDefaults = (
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
     defaults['monitor_setting.auto_test_channel_minutes'],
+  'monitor_setting.recovery_mode':
+    defaults['monitor_setting.recovery_mode'] ?? 'follow',
+  'monitor_setting.recovery_probe_minutes':
+    defaults['monitor_setting.recovery_probe_minutes'] ?? 5,
+  'monitor_setting.recovery_probe_count':
+    defaults['monitor_setting.recovery_probe_count'] ?? 1,
+  'monitor_setting.recovery_threshold_seconds':
+    defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
 })
 
 const normalizeFormValues = (
@@ -178,6 +244,12 @@ const normalizeFormValues = (
 ): NormalizedRoutingReliabilityValues => ({
   RetryTimes: values.RetryTimes,
   ChannelDisableThreshold: values.ChannelDisableThreshold.trim(),
+  StreamFirstResponseTimeoutSeconds:
+    values.StreamFirstResponseTimeoutSeconds.trim(),
+  ChannelNonStreamSlowRequestThreshold:
+    values.ChannelNonStreamSlowRequestThreshold.trim(),
+  ChannelDisableWindowMinutes: values.ChannelDisableWindowMinutes.trim(),
+  ChannelDisableFailureThreshold: values.ChannelDisableFailureThreshold.trim(),
   AutomaticDisableChannelEnabled: values.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: values.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -193,6 +265,13 @@ const normalizeFormValues = (
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
     values.monitor_setting.auto_test_channel_minutes,
+  'monitor_setting.recovery_mode': values.monitor_setting.recovery_mode,
+  'monitor_setting.recovery_probe_minutes':
+    values.monitor_setting.recovery_probe_minutes,
+  'monitor_setting.recovery_probe_count':
+    values.monitor_setting.recovery_probe_count,
+  'monitor_setting.recovery_threshold_seconds':
+    values.monitor_setting.recovery_threshold_seconds,
 })
 
 export function RoutingReliabilitySection({
@@ -394,6 +473,62 @@ export function RoutingReliabilitySection({
                 )}
               />
             </div>
+
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='StreamFirstResponseTimeoutSeconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('Streaming first-token timeout (seconds)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='ChannelNonStreamSlowRequestThreshold'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('Non-streaming text slow request threshold (seconds)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Only non-streaming text requests are counted. Uses total duration. 0 disables this rule.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           </div>
 
           <Separator />
@@ -453,6 +588,56 @@ export function RoutingReliabilitySection({
 
               <FormField
                 control={form.control}
+                name='ChannelDisableWindowMinutes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failure window (minutes)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Time window for counting consecutive failures before disabling'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='ChannelDisableFailureThreshold'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Failure threshold (times)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Number of failures within the window before auto-disabling'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name='AutomaticDisableStatusCodes'
                 render={({ field }) => (
                   <FormItem>
@@ -498,6 +683,134 @@ export function RoutingReliabilitySection({
                     <FormDescription>
                       {t(
                         'If an upstream error contains any of these keywords (case insensitive), the channel will be disabled automatically.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>{t('Recovery probing')}</h4>
+            </div>
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Recovery mode')}</FormLabel>
+                    <FormControl>
+                      <select
+                        className='border-input bg-background flex h-10 w-full rounded-md border px-3 py-2 text-sm'
+                        value={field.value}
+                        onChange={field.onChange}
+                      >
+                        <option value='follow'>
+                          {t('Follow scheduled tests')}
+                        </option>
+                        <option value='independent'>
+                          {t('Independent probing')}
+                        </option>
+                      </select>
+                    </FormControl>
+                    <FormDescription>
+                      {t('How disabled channels are re-tested for recovery')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_probe_minutes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('Recovery probe interval (minutes)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0.1}
+                        step={0.1}
+                        disabled={
+                          form.watch('monitor_setting.recovery_mode') !==
+                          'independent'
+                        }
+                        value={
+                          typeof field.value === 'number' &&
+                          Number.isFinite(field.value)
+                            ? field.value
+                            : ''
+                        }
+                        onChange={(event) =>
+                          field.onChange(event.target.valueAsNumber)
+                        }
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('How often disabled channels are probed for recovery')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_threshold_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Recovery threshold (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Recovery checks must finish within this time; 0 disables the limit'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_probe_count'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Recovery probe attempts')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        disabled={
+                          form.watch('monitor_setting.recovery_mode') !==
+                          'independent'
+                        }
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Concurrent tests per recovery round; all must pass within the recovery threshold'
                       )}
                     </FormDescription>
                     <FormMessage />

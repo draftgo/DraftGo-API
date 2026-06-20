@@ -3424,6 +3424,7 @@
     "Recovery mode": "恢复模式",
     "Recovery probe attempts": "恢复单次探测次数",
     "Recovery probe interval (minutes)": "恢复探测间隔（分钟）",
+    "Recovery probing": "恢复探测",
     "Recovery threshold (seconds)": "恢复阈值（秒）",
     "Recursion Strategy": "递归策略",
     "Recursive": "递归",

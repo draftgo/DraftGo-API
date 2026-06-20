@@ -73,6 +73,13 @@ const MODELS_SECTIONS = [
         defaultValues={{
           RetryTimes: settings.RetryTimes,
           ChannelDisableThreshold: settings.ChannelDisableThreshold,
+          StreamFirstResponseTimeoutSeconds:
+            settings.StreamFirstResponseTimeoutSeconds,
+          ChannelNonStreamSlowRequestThreshold:
+            settings.ChannelNonStreamSlowRequestThreshold,
+          ChannelDisableWindowMinutes: settings.ChannelDisableWindowMinutes,
+          ChannelDisableFailureThreshold:
+            settings.ChannelDisableFailureThreshold,
           AutomaticDisableChannelEnabled:
             settings.AutomaticDisableChannelEnabled,
           AutomaticEnableChannelEnabled: settings.AutomaticEnableChannelEnabled,
@@ -83,6 +90,14 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.auto_test_channel_enabled'],
           'monitor_setting.auto_test_channel_minutes':
             settings['monitor_setting.auto_test_channel_minutes'],
+          'monitor_setting.recovery_mode':
+            settings['monitor_setting.recovery_mode'],
+          'monitor_setting.recovery_probe_minutes':
+            settings['monitor_setting.recovery_probe_minutes'],
+          'monitor_setting.recovery_probe_count':
+            settings['monitor_setting.recovery_probe_count'],
+          'monitor_setting.recovery_threshold_seconds':
+            settings['monitor_setting.recovery_threshold_seconds'],
         }}
       />
     ),

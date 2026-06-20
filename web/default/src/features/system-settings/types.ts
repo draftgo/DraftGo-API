@@ -181,6 +181,10 @@ export type ModelSettings = {
   'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
   ChannelDisableThreshold: string
+  StreamFirstResponseTimeoutSeconds: string
+  ChannelNonStreamSlowRequestThreshold: string
+  ChannelDisableWindowMinutes: string
+  ChannelDisableFailureThreshold: string
   AutomaticDisableChannelEnabled: boolean
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string
@@ -188,6 +192,10 @@ export type ModelSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.recovery_mode': string
+  'monitor_setting.recovery_probe_minutes': number
+  'monitor_setting.recovery_probe_count': number
+  'monitor_setting.recovery_threshold_seconds': number
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean
