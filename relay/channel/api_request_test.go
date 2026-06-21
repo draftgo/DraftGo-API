@@ -1,11 +1,17 @@
 package channel
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	common2 "github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -190,4 +196,47 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 	require.Equal(t, "Codex CLI", upstreamReq.Header.Get("Originator"))
 	require.Equal(t, "sess-123", upstreamReq.Header.Get("Session_id"))
 	require.Empty(t, upstreamReq.Header.Get("X-Codex-Beta-Features"))
+}
+
+func TestDoRequest_StreamFirstResponseTimeoutIncludesResponseHeaderWait(t *testing.T) {
+	oldFirstResponseTimeout := common2.StreamFirstResponseTimeoutSeconds
+	oldRelayTimeout := common2.RelayTimeout
+	t.Cleanup(func() {
+		common2.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common2.RelayTimeout = oldRelayTimeout
+		service.InitHttpClient()
+	})
+
+	common2.StreamFirstResponseTimeoutSeconds = 0.03
+	common2.RelayTimeout = 0
+	service.InitHttpClient()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(80 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer server.Close()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+	require.NoError(t, err)
+	info := &relaycommon.RelayInfo{
+		IsStream:    true,
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{},
+	}
+
+	resp, err := DoRequest(ctx, req, info)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	require.Error(t, err)
+
+	var apiErr *types.NewAPIError
+	require.True(t, errors.As(err, &apiErr))
+	require.Equal(t, types.ErrorCodeChannelStreamFirstResponseTimeout, apiErr.GetErrorCode())
 }

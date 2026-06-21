@@ -88,7 +88,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	logger.LogDebug(c, "relay max idle conns per host: %d", common.RelayMaxIdleConnsPerHost)
 	logger.LogDebug(c, "streaming timeout seconds: %d", int64(streamingTimeout.Seconds()))
 	logger.LogDebug(c, "ping interval seconds: %d", int64(pingInterval.Seconds()))
-	firstResponseTimeoutEnabled := streamFirstResponseTimeoutEnabled(info)
+	firstResponseTimeoutEnabled := StreamFirstResponseTimeoutEnabled(info)
 	if firstResponseTimeoutEnabled {
 		logger.LogDebug(c, "stream first response timeout seconds: %.2f", common.StreamFirstResponseTimeoutSeconds)
 	}
@@ -190,7 +190,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 
 	dataChan := make(chan string, 10)
-	firstResponseTimeout := time.Duration(common.StreamFirstResponseTimeoutSeconds * float64(time.Second))
+	firstResponseTimeout := StreamFirstResponseTimeoutRemaining(info)
 	var firstResponseTimer *time.Timer
 	firstResponseSeen := make(chan struct{})
 	var firstResponseSeenOnce sync.Once
@@ -369,7 +369,7 @@ func StreamFirstResponseTimeoutAPIError(info *relaycommon.RelayInfo) *types.NewA
 	return types.NewOpenAIError(err, types.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
 }
 
-func streamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
+func StreamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
 	if common.StreamFirstResponseTimeoutSeconds <= 0 || info == nil {
 		return false
 	}
@@ -384,4 +384,28 @@ func streamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
 	default:
 		return false
 	}
+}
+
+func StreamFirstResponseTimeoutDuration() time.Duration {
+	if common.StreamFirstResponseTimeoutSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(common.StreamFirstResponseTimeoutSeconds * float64(time.Second))
+}
+
+func StreamFirstResponseTimeoutRemaining(info *relaycommon.RelayInfo) time.Duration {
+	timeout := StreamFirstResponseTimeoutDuration()
+	if timeout <= 0 || info == nil {
+		return 0
+	}
+	startTime := info.StreamFirstResponseStartTime()
+	if startTime.IsZero() {
+		return timeout
+	}
+	deadline := startTime.Add(timeout)
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return 1 * time.Nanosecond
+	}
+	return remaining
 }
