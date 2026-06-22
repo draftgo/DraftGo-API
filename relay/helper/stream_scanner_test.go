@@ -17,6 +17,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -440,6 +441,19 @@ func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonFirstResponseTimeout, info.StreamStatus.EndReason)
 	require.NotNil(t, StreamFirstResponseTimeoutAPIError(info))
+}
+
+func TestStreamFirstResponseTimeoutEnabled_ClaudeNativeMessages(t *testing.T) {
+	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
+	common.StreamFirstResponseTimeoutSeconds = 8
+	t.Cleanup(func() { common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout })
+
+	info := &relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeUnknown,
+		RelayFormat: types.RelayFormatClaude,
+	}
+
+	require.True(t, StreamFirstResponseTimeoutEnabled(info))
 }
 
 func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {

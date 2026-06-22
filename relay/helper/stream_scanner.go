@@ -373,6 +373,9 @@ func StreamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
 	if common.StreamFirstResponseTimeoutSeconds <= 0 || info == nil {
 		return false
 	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		return true
+	}
 
 	switch info.RelayMode {
 	case relayconstant.RelayModeChatCompletions,
