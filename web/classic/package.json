@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@alloc/quick-lru": "^5.2.0",
     "@douyinfe/semi-illustrations": "^2.69.1",
     "@douyinfe/semi-icons": "^2.63.1",
     "@douyinfe/semi-ui": "^2.69.1",
@@ -14,6 +13,7 @@
     "@visactor/vchart-semi-theme": "~1.8.8",
     "axios": "catalog:",
     "clsx": "catalog:",
+    "date-fns": "^2.29.3",
     "dayjs": "catalog:",
     "history": "^5.3.0",
     "highlight.js": "^11.11.1",
