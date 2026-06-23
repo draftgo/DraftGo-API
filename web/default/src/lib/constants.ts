@@ -21,7 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
  */
 
 // System Configuration Defaults
-export const DEFAULT_SYSTEM_NAME = 'DraftGo'
+export const DEFAULT_SYSTEM_NAME = 'DraftGo API'
 export const DEFAULT_LOGO = '/favicon.ico'
 
 export function normalizeSystemName(value: unknown): string {

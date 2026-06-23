@@ -18,10 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 function normalizeSystemName(value) {
-  if (typeof value !== 'string') return 'DraftGo';
+  if (typeof value !== 'string') return 'DraftGo API';
   const trimmed = value.trim();
-  if (!trimmed) return 'DraftGo';
-  if (trimmed.replace(/\s+/g, '').toLowerCase() === 'newapi') return 'DraftGo';
+  if (!trimmed) return 'DraftGo API';
+  if (trimmed.replace(/\s+/g, '').toLowerCase() === 'newapi') return 'DraftGo API';
   return trimmed;
 }
 

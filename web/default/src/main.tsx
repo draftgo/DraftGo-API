@@ -131,7 +131,7 @@ const rootElement = document.getElementById('root')!
       if (saved) {
         const s = JSON.parse(saved)
         if (s?.system_name) apply(normalizeSystemName(s.system_name))
-        if (s?.logo) applyFaviconToDom(s.logo)
+        if (s?.logo && s.logo !== '/logo.png') applyFaviconToDom(s.logo)
       }
     } catch {
       /* empty */
@@ -153,7 +153,7 @@ const rootElement = document.getElementById('root')!
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
+        if (s?.logo && s.logo !== '/logo.png') applyFaviconToDom(s.logo as string)
       })
       .catch(() => {
         /* empty */

@@ -27,7 +27,7 @@ import {
 const defaultSiteSettings: SiteSettings = {
   'theme.frontend': 'default',
   Notice: '',
-  SystemName: 'DraftGo',
+  SystemName: 'DraftGo API',
   Logo: '',
   Footer: '',
   About: '',

@@ -1,7 +1,7 @@
 {
-  "name": "new-api-electron",
+  "name": "draftgo-electron",
   "version": "1.0.0",
-  "description": "New API - AI Model Gateway Desktop Application",
+  "description": "DraftGo API - AI Model Gateway Desktop Application",
   "main": "main.js",
   "scripts": {
     "start-app": "electron .",
@@ -29,8 +29,8 @@
     "electron-builder": "^26.7.0"
   },
   "build": {
-    "appId": "com.newapi.desktop",
-    "productName": "New-API-App",
+    "appId": "com.draftgo.desktop",
+    "productName": "DraftGo API",
     "publish": null,
     "directories": {
       "output": "dist"
@@ -38,6 +38,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "icon.ico",
       "icon.png",
       "tray-iconTemplate.png",
       "tray-iconTemplate@2x.png",
@@ -45,7 +46,7 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": "icon.png",
+      "icon": "icon.ico",
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,

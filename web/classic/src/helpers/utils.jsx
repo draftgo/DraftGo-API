@@ -48,15 +48,15 @@ export function isRoot() {
 
 export function getSystemName() {
   let system_name = localStorage.getItem('system_name');
-  if (!system_name) return 'DraftGo';
+  if (!system_name) return 'DraftGo API';
   const normalized = system_name.trim().replace(/\s+/g, '').toLowerCase();
-  if (normalized === 'newapi') return 'DraftGo';
+  if (normalized === 'newapi') return 'DraftGo API';
   return system_name;
 }
 
 export function getLogo() {
   let logo = localStorage.getItem('logo');
-  if (!logo) return '/logo.png';
+  if (!logo || logo === '/logo.png') return '/favicon.ico';
   return logo;
 }
 

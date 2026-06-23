@@ -159,7 +159,7 @@ export function Footer(props: FooterProps) {
   } = useSystemConfig()
 
   const displayLogo = systemLogo || props.logo || DEFAULT_LOGO
-  const displayName = systemName || props.name || 'DraftGo'
+  const displayName = systemName || props.name || 'DraftGo API'
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
