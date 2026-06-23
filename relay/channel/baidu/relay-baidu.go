@@ -134,10 +134,6 @@ func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 			sr.Error(err)
 		}
 	})
-	if err := helper.StreamFirstResponseTimeoutAPIError(info); err != nil {
-		service.CloseResponseBodyGracefully(resp)
-		return err, nil
-	}
 	service.CloseResponseBodyGracefully(resp)
 	return nil, usage
 }

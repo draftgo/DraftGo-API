@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -327,9 +328,8 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 			err := fmt.Errorf("stream first response timeout after %.2fs", common.StreamFirstResponseTimeoutSeconds)
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonFirstResponseTimeout, err)
-			if resp.Body != nil {
-				_ = resp.Body.Close()
-			}
+			RecordStreamFirstResponseTimeoutFailure(c, info, err)
+			waitForStreamEnd()
 		case <-ticker.C:
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
 		case <-stopChan:
@@ -348,25 +348,45 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	}
 }
 
-func StreamFirstResponseTimeoutError(info *relaycommon.RelayInfo) error {
-	if info == nil || info.StreamStatus == nil {
-		return nil
+func RecordStreamFirstResponseTimeoutFailure(c *gin.Context, info *relaycommon.RelayInfo, err error) {
+	if info == nil || info.ChannelMeta == nil || err == nil {
+		return
 	}
-	if info.StreamStatus.EndReason != relaycommon.StreamEndReasonFirstResponseTimeout {
-		return nil
+	if !common.AutomaticDisableChannelEnabled {
+		return
 	}
-	if info.StreamStatus.EndError != nil {
-		return info.StreamStatus.EndError
+	if !info.MarkStreamFirstResponseTimeoutFailureRecorded() {
+		return
 	}
-	return fmt.Errorf("stream first response timeout")
-}
 
-func StreamFirstResponseTimeoutAPIError(info *relaycommon.RelayInfo) *types.NewAPIError {
-	err := StreamFirstResponseTimeoutError(info)
-	if err == nil {
-		return nil
+	channelName := ""
+	if c != nil {
+		channelName = common.GetContextKeyString(c, constant.ContextKeyChannelName)
 	}
-	return types.NewOpenAIError(err, types.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
+	if channelName == "" {
+		channelName = fmt.Sprintf("#%d", info.ChannelMeta.ChannelId)
+	}
+	channelError := types.NewChannelError(
+		info.ChannelMeta.ChannelId,
+		info.ChannelMeta.ChannelType,
+		channelName,
+		info.ChannelMeta.ChannelIsMultiKey,
+		info.ChannelMeta.ApiKey,
+		c != nil && common.GetContextKeyBool(c, constant.ContextKeyChannelAutoBan),
+	)
+	if !channelError.AutoBan {
+		return
+	}
+
+	timeoutErr := types.NewOpenAIError(err, types.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
+	if !service.ShouldDisableChannel(timeoutErr) {
+		return
+	}
+	if service.RecordFailure(channelError.ChannelId, channelError.UsingKey) {
+		gopool.Go(func() {
+			service.DisableChannel(*channelError, timeoutErr.ErrorWithStatusCode())
+		})
+	}
 }
 
 func StreamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {

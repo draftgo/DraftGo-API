@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -178,7 +179,8 @@ type RelayInfo struct {
 	// 若为空，调用 GetFinalRequestRelayFormat 会回退到 RequestConversionChain 的最后一项或 RelayFormat。
 	FinalRequestRelayFormat types.RelayFormat
 
-	StreamStatus *StreamStatus
+	StreamStatus                        *StreamStatus
+	firstResponseTimeoutFailureRecorded atomic.Bool
 
 	ThinkingContentInfo
 	TokenCountMeta
@@ -460,7 +462,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	reqId := common.GetContextKeyString(c, common.RequestIdKey)
 	if reqId == "" {
-		reqId = common.GetTimeString() + common.GetRandomString(8)
+		reqId = common.NewRequestId()
 	}
 	info := &RelayInfo{
 		Request: request,
@@ -683,6 +685,13 @@ func (info *RelayInfo) StreamFirstResponseStartTime() time.Time {
 		return info.UpstreamStartTime
 	}
 	return info.StartTime
+}
+
+func (info *RelayInfo) MarkStreamFirstResponseTimeoutFailureRecorded() bool {
+	if info == nil {
+		return false
+	}
+	return info.firstResponseTimeoutFailureRecorded.CompareAndSwap(false, true)
 }
 
 type TaskRelayInfo struct {

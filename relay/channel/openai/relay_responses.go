@@ -138,9 +138,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
-	if err := helper.StreamFirstResponseTimeoutAPIError(info); err != nil {
-		return nil, err
-	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

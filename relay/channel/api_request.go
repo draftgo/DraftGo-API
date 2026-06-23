@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	common2 "github.com/QuantumNous/new-api/common"
@@ -482,19 +481,6 @@ func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
 	}
 }
 
-type cancelOnCloseReadCloser struct {
-	io.ReadCloser
-	cancel context.CancelFunc
-}
-
-func (r *cancelOnCloseReadCloser) Close() error {
-	err := r.ReadCloser.Close()
-	if r.cancel != nil {
-		r.cancel()
-	}
-	return err
-}
-
 func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	return doRequest(c, req, info)
 }
@@ -537,16 +523,13 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	if info != nil {
 		info.SetUpstreamStartTime(time.Now())
 	}
-	var firstResponseCancel context.CancelFunc
 	var firstResponseTimer *time.Timer
-	var firstResponseTimedOut atomic.Bool
 	if firstResponseTimeoutEnabled {
 		firstResponseTimeout := helper.StreamFirstResponseTimeoutDuration()
 		if firstResponseTimeout > 0 {
-			requestCtx, firstResponseCancel = context.WithCancel(requestCtx)
 			firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
-				firstResponseTimedOut.Store(true)
-				firstResponseCancel()
+				helper.RecordStreamFirstResponseTimeoutFailure(c, info,
+					fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds))
 			})
 		}
 	}
@@ -557,38 +540,23 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		firstResponseTimer.Stop()
 	}
 	if err != nil {
-		if firstResponseCancel != nil {
-			firstResponseCancel()
-		}
-		if firstResponseTimeoutEnabled && firstResponseTimedOut.Load() {
-			return nil, types.NewOpenAIError(
-				fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds),
-				types.ErrorCodeChannelStreamFirstResponseTimeout,
-				http.StatusServiceUnavailable,
-			)
-		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
-		if firstResponseCancel != nil {
-			firstResponseCancel()
-		}
 		return nil, errors.New("resp is nil")
-	}
-	if firstResponseCancel != nil && resp.Body != nil {
-		resp.Body = &cancelOnCloseReadCloser{
-			ReadCloser: resp.Body,
-			cancel:     firstResponseCancel,
-		}
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
 	}
 
-	_ = req.Body.Close()
-	_ = c.Request.Body.Close()
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
+	if c.Request != nil && c.Request.Body != nil {
+		_ = c.Request.Body.Close()
+	}
 	return resp, nil
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -428,19 +429,45 @@ func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
 		_ = pr.Close()
 		_ = pw.Close()
 	})
+	t.Cleanup(func() {
+		service.ClearFailure(123, "test-key")
+	})
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	common.SetContextKey(c, constant.ContextKeyChannelName, "test-channel")
+	common.SetContextKey(c, constant.ContextKeyChannelType, 1)
+	common.SetContextKey(c, constant.ContextKeyChannelId, 123)
+	common.SetContextKey(c, constant.ContextKeyChannelAutoBan, true)
+	common.SetContextKey(c, constant.ContextKeyChannelKey, "test-key")
 
 	resp := &http.Response{Body: pr}
-	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeChatCompletions, ChannelMeta: &relaycommon.ChannelMeta{}}
+	info := &relaycommon.RelayInfo{
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 123, ChannelType: 1, ApiKey: "test-key"},
+	}
 
-	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
+		close(done)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	_, _ = pw.Write([]byte("data: {\"id\":1,\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n"))
+	_, _ = pw.Write([]byte("data: [DONE]\n"))
+	_ = pw.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for stream handler to finish")
+	}
 
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonFirstResponseTimeout, info.StreamStatus.EndReason)
-	require.NotNil(t, StreamFirstResponseTimeoutAPIError(info))
+	assert.Equal(t, 1, info.ReceivedResponseCount)
 }
 
 func TestStreamFirstResponseTimeoutEnabled_ClaudeNativeMessages(t *testing.T) {
