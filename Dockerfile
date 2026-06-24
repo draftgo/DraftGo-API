@@ -12,10 +12,11 @@ RUN cd default && DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /bui
 FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS builder-classic
 
 WORKDIR /build/web
-COPY web/package.json web/bun.lock ./
-COPY web/default/package.json ./default/package.json
+COPY web/package.json ./
+# Exclude default workspace to prevent date-fns v4 hoisting (classic needs v2 for date-fns-tz compat)
+RUN bun -e "const {readFileSync,writeFileSync}=require('fs');const p=JSON.parse(readFileSync('package.json','utf8'));p.workspaces=['classic'];writeFileSync('package.json',JSON.stringify(p))"
 COPY web/classic/package.json ./classic/package.json
-RUN bun install --filter classic
+RUN bun install
 COPY ./web/classic ./classic
 COPY ./VERSION /build/VERSION
 RUN cd classic && VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
