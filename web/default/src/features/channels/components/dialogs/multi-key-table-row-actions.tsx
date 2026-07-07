@@ -17,12 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
+
 import { Button } from '@/components/ui/button'
+
 import type { MultiKeyConfirmAction } from '../../types'
 
 type MultiKeyTableRowActionsProps = {
   keyIndex: number
   status: number
+  canDelete: boolean
   onAction: (action: MultiKeyConfirmAction) => void
   onTest?: (keyIndex: number) => void
   isTesting?: boolean
@@ -31,6 +34,7 @@ type MultiKeyTableRowActionsProps = {
 export function MultiKeyTableRowActions({
   keyIndex,
   status,
+  canDelete,
   onAction,
   onTest,
   isTesting = false,
@@ -70,7 +74,14 @@ export function MultiKeyTableRowActions({
       <Button
         variant='destructive'
         size='sm'
-        onClick={() => onAction({ type: 'delete', keyIndex })}
+        onClick={() => {
+          if (!canDelete) return
+          onAction({ type: 'delete', keyIndex })
+        }}
+        disabled={!canDelete}
+        title={
+          canDelete ? undefined : t('No permission to perform this action')
+        }
       >
         {t('Delete')}
       </Button>

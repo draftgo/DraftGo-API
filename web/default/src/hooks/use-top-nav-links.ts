@@ -18,16 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
+import { parseCustomNavLinks } from '@/features/system-settings/maintenance/header-custom-links-section'
+import { useStatus } from '@/hooks/use-status'
+import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { ROLE } from '@/lib/roles'
 import {
   getCurrentAccessToken,
   resolveTemplateUrl,
   templateNeedsAccessToken,
 } from '@/lib/template-url'
-import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
-import { parseCustomNavLinks } from '@/features/system-settings/maintenance/header-custom-links-section'
-import { useStatus } from '@/hooks/use-status'
+import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
   title: string

@@ -18,13 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
 import {
   formatLatency,
   formatUptimePct,
   getSuccessRateDotClass,
 } from '@/features/performance-metrics/lib/format'
 import type { AvailabilityStatus } from '@/features/performance-metrics/types'
+import { cn } from '@/lib/utils'
 
 const MIN_REQUESTS_FOR_TRAFFIC_STATUS = 20
 

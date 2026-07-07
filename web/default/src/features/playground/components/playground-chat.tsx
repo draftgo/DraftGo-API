@@ -52,11 +52,11 @@ import {
   SourcesTrigger,
 } from '@/components/ai-elements/sources'
 import { MESSAGE_ROLES, MESSAGE_STATUS } from '../constants'
-import { getMessageContentStyles } from '../lib/message-styles'
+import { getMessageContentStyles } from '../lib/message/message-styles'
 import { parseThinkTags } from '../lib/message-utils'
 import type { Message as MessageType } from '../types'
-import { MessageActions } from './message-actions'
-import { MessageError } from './message-error'
+import { MessageActions } from './message/message-actions'
+import { MessageError } from './message/message-error'
 
 interface PlaygroundChatProps {
   messages: MessageType[]

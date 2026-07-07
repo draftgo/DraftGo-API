@@ -16,16 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
 import i18next from 'i18next'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useStatus } from '@/hooks/use-status'
+import { isHttpUrl } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 import {
   getCurrentAccessToken,
   resolveTemplateUrl,
   templateNeedsAccessToken,
 } from '@/lib/template-url'
-import { useStatus } from '@/hooks/use-status'
 import { getHomePageContent } from '../api'
 import type { HomePageContentResult } from '../types'
 
@@ -126,13 +127,4 @@ export function useHomePageContent(): HomePageContentResult {
   const isUrl = isHttpUrl(content)
 
   return { content, isLoaded: isLoaded && isResolved, isUrl }
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
 }

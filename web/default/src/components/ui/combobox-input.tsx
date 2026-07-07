@@ -20,8 +20,9 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
+
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 
 export type ComboboxInputOption = {
   value: string
@@ -47,6 +48,7 @@ interface ComboboxInputProps {
   id?: string
   allowCustomValue?: boolean
   disablePortal?: boolean
+  openOnFocus?: boolean
 }
 
 export function ComboboxInput({
@@ -59,6 +61,7 @@ export function ComboboxInput({
   id,
   allowCustomValue = false,
   disablePortal = false,
+  openOnFocus = true,
 }: ComboboxInputProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
@@ -70,6 +73,7 @@ export function ComboboxInput({
   const listRef = React.useRef<HTMLUListElement>(null)
   const [dropdownPosition, setDropdownPosition] =
     React.useState<DropdownPosition | null>(null)
+  const pointerFocusRef = React.useRef(false)
   const selectedOption = React.useMemo(
     () => options.find((option) => option.value === value),
     [options, value]
@@ -322,9 +326,18 @@ export function ComboboxInput({
           }
           if (!open) setOpen(true)
         }}
+        onPointerDown={() => {
+          pointerFocusRef.current = true
+          if (document.activeElement === inputRef.current && !open) {
+            setOpen(true)
+          }
+        }}
         onFocus={() => {
           setSearchValue(allowCustomValue && !selectedOption ? value : '')
-          setOpen(true)
+          if (openOnFocus || pointerFocusRef.current) {
+            setOpen(true)
+          }
+          pointerFocusRef.current = false
         }}
         onKeyDown={handleKeyDown}
         className={cn('pr-9', className)}
