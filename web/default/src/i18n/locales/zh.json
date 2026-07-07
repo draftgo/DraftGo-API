@@ -1123,6 +1123,7 @@
     "Created a subscription plan": "创建了一个订阅计划",
     "Created a vendor": "创建了一个供应商",
     "Created At": "创建时间",
+    "Auto-disabled channel {{name}} (ID: {{id}}) because {{reason}}": "自动禁用渠道 {{name}}（ID：{{id}}），原因：{{reason}}",
     "Created channel {{name}} (type {{type}}, count {{count}})": "创建渠道 {{name}}（类型 {{type}}，数量 {{count}}）",
     "Created user {{username}} (role {{role}})": "创建用户 {{username}}（角色 {{role}}）",
     "Creates a Pancake product in the saved store using this plan’s title and price. Requires Waffo Pancake to be fully configured in Payment settings first.": "使用此套餐的标题和价格，在已保存的店铺中创建 Pancake 产品。需要先在支付设置中完整配置 Waffo Pancake。",
@@ -4901,7 +4902,7 @@
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放",
     "Streaming first-token timeout (seconds)": "流式首字超时（秒）",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed and the next channel is retried. 0 disables this rule.": "流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道。0 表示关闭此规则。",
+    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed. The request keeps streaming and 0 disables this rule.": "流式文本请求在该超时内仍未收到首字时，当前渠道判定为失败。请求会继续流式进行，0 表示关闭此规则。",
     "Choose an application and map models for the CC Switch provider import.": "选择应用并为 CC Switch 服务商导入映射模型。",
     "Only the primary model is required. Optional model fields can be left blank.": "仅主模型必填，其他模型字段可以留空。"
   }

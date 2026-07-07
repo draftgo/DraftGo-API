@@ -350,6 +350,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'channel.tag_enable': 'Enabled channels with tag {{tag}}',
   'channel.tag_edit': 'Edited channels with tag {{tag}}',
   'channel.tag_batch_set': 'Batch set tag for {{count}} channels',
+  'channel.auto_disable': 'Auto-disabled channel {{name}} (ID: {{id}}) because {{reason}}',
   'channel.copy':
     'Copied channel (source ID: {{sourceId}}) to {{name}} (new ID: {{id}})',
   'channel.multi_key_manage':

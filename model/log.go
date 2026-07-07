@@ -231,6 +231,49 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	}
 }
 
+func getRootUserIDForAudit() int {
+	var rootUser User
+	if DB == nil {
+		return 0
+	}
+	err := DB.Model(&User{}).Select("id").Where("role = ?", common.RoleRootUser).First(&rootUser).Error
+	if err != nil || rootUser.Id <= 0 {
+		return 0
+	}
+	return rootUser.Id
+}
+
+// RecordAutoDisableChannelAuditLog records a manage log for an automatic channel disable
+// so admins can see the exact reason from the usage log pages.
+func RecordAutoDisableChannelAuditLog(channelId int, channelType int, channelName string, reason string, usingKey string, isMultiKey bool) {
+	params := map[string]interface{}{
+		"id":           channelId,
+		"name":         channelName,
+		"type":         channelType,
+		"reason":       reason,
+		"is_multi_key": isMultiKey,
+	}
+	if strings.TrimSpace(usingKey) != "" {
+		params["key_fp"] = common.Sha1([]byte(usingKey))[:8]
+	}
+	content := fmt.Sprintf("Auto-disabled channel %s (ID: %d)", channelName, channelId)
+	if strings.TrimSpace(reason) != "" {
+		content += " because " + reason
+	}
+
+	auditInfo := map[string]interface{}{
+		"trigger": "automatic_disable",
+	}
+	if common.NodeName != "" {
+		auditInfo["node_name"] = common.NodeName
+	}
+	if ip := common.GetIp(); ip != "" {
+		auditInfo["server_ip"] = ip
+	}
+
+	RecordOperationAuditLog(getRootUserIDForAudit(), content, "", "channel.auto_disable", params, nil, auditInfo)
+}
+
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{

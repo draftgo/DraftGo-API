@@ -819,8 +819,20 @@ const EditChannelModal = (props) => {
 
   const loadChannel = async () => {
     setLoading(true);
-    let res = await API.get(`/api/channel/${channelId}`);
+    setIsIonetChannel(false);
+    setIonetMetadata(null);
+
+    let res;
+    try {
+      res = await API.get(`/api/channel/${channelId}`);
+    } catch (error) {
+      console.error('加载渠道失败:', error);
+      showError(error?.message || t('加载渠道失败'));
+      setLoading(false);
+      return;
+    }
     if (res === undefined) {
+      setLoading(false);
       return;
     }
     const { success, message, data } = res.data;
@@ -1388,6 +1400,13 @@ const EditChannelModal = (props) => {
     setModelSearchValue('');
     // 重置高级设置折叠状态
     setAdvancedSettingsOpen(false);
+    // 重置 IO.NET 锁定相关状态，避免下次打开残留不可编辑态
+    setIsIonetChannel(false);
+    setIonetMetadata(null);
+    setIsMultiKeyChannel(false);
+    setBatch(false);
+    setMultiToSingle(false);
+    setMultiKeyMode('random');
     // 清空表单中的key_mode字段
     if (formApiRef.current) {
       formApiRef.current.setValue('key_mode', undefined);

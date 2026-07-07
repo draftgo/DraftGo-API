@@ -794,6 +794,14 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	return true
 }
 
+func RecordChannelAutoDisableAuditLog(channelId int, usingKey string, reason string, isMultiKey bool) {
+	channel, err := GetChannelById(channelId, true)
+	if err != nil || channel == nil {
+		return
+	}
+	RecordAutoDisableChannelAuditLog(channel.Id, channel.Type, channel.Name, reason, usingKey, isMultiKey)
+}
+
 func EnableChannelByTag(tag string) error {
 	err := DB.Model(&Channel{}).Where("tag = ?", tag).Update("status", common.ChannelStatusEnabled).Error
 	if err != nil {
