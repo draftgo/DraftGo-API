@@ -16,31 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { getUserModels, getUserGroups } from './api'
-import { PlaygroundChat } from './components/playground-chat'
-import { PlaygroundDataBrowser } from './components/playground-data-browser'
-import { PlaygroundInput } from './components/playground-input'
-import { PlaygroundJsonViewer } from './components/playground-json-viewer'
-import { PlaygroundSessionList } from './components/playground-session-list'
-import { PlaygroundSettings } from './components/playground-settings'
-import { usePlaygroundState, useChatHandler } from './hooks'
-import { createUserMessage, createLoadingAssistantMessage } from './lib'
-import type { Message as MessageType } from './types'
+import { PlaygroundChat } from './components/chat/playground-chat'
+import { PlaygroundInput } from './components/input/playground-input'
+import {
+  useChatHandler,
+  usePlaygroundConversation,
+  usePlaygroundOptions,
+  usePlaygroundState,
+} from './hooks'
 
 export function Playground() {
-  const { t } = useTranslation()
   const {
     config,
     parameterEnabled,
     messages,
-    sessions,
-    activeSessionId,
-    sessionListCollapsed,
-    quickPrompts,
+    isLoadingMessages,
     models,
     groups,
     updateMessages,
@@ -49,291 +39,81 @@ export function Playground() {
     updateConfig,
     updateParameterEnabled,
     clearMessages,
-    resetConfig,
-    selectSession,
-    createSession,
-    deleteSession,
-    updateQuickPrompts,
-    toggleSessionList,
   } = usePlaygroundState()
 
-  const { sendChat, sendCompareChat, stopGeneration, isGenerating } =
-    useChatHandler({
+  const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
     parameterEnabled,
     onMessageUpdate: updateMessages,
   })
 
-  // Edit dialog state
-  const [editingMessageKey, setEditingMessageKey] = useState<string | null>(
-    null
-  )
-
-  // Load models
-  const { data: modelsData, isLoading: isLoadingModels } = useQuery({
-    queryKey: ['playground-models'],
-    queryFn: async () => {
-      try {
-        return await getUserModels()
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : t('Failed to load playground models')
-        )
-        return []
-      }
-    },
+  const {
+    editingMessageKey,
+    handleSendMessage,
+    handleRegenerateMessage,
+    handleEditMessage,
+    handleEditOpenChange,
+    applyEdit,
+    handleDeleteMessage,
+  } = usePlaygroundConversation({
+    messages,
+    updateMessages,
+    sendChat,
   })
 
-  // Load groups
-  const { data: groupsData } = useQuery({
-    queryKey: ['playground-groups'],
-    queryFn: async () => {
-      try {
-        return await getUserGroups()
-      } catch (error) {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : t('Failed to load playground groups')
-        )
-        return []
-      }
-    },
+  const handleClearMessages = () => {
+    handleEditOpenChange(false)
+    clearMessages()
+  }
+
+  const { isLoadingModels } = usePlaygroundOptions({
+    currentGroup: config.group,
+    currentModel: config.model,
+    setGroups,
+    setModels,
+    updateConfig,
   })
-
-  // Update models when data changes
-  useEffect(() => {
-    if (!modelsData) return
-
-    setModels(modelsData)
-
-    // Set default model if current model is not available
-    const isCurrentModelValid = modelsData.some((m) => m.value === config.model)
-    if (modelsData.length > 0 && !isCurrentModelValid) {
-      updateConfig('model', modelsData[0].value)
-    }
-  }, [modelsData, config.model, setModels, updateConfig])
-
-  // Update groups when data changes
-  useEffect(() => {
-    if (!groupsData) return
-
-    setGroups(groupsData)
-
-    const hasCurrentGroup = groupsData.some((g) => g.value === config.group)
-    if (!hasCurrentGroup && groupsData.length > 0) {
-      const fallback =
-        groupsData.find((g) => g.value === 'default')?.value ??
-        groupsData[0].value
-      updateConfig('group', fallback)
-    }
-  }, [groupsData, setGroups, config.group, updateConfig])
-
-  const getCompareModels = useCallback(() => {
-    const availableModels = new Set(models.map((model) => model.value))
-    const selected = config.compareModels.filter((model) =>
-      availableModels.has(model)
-    )
-    const fallback = availableModels.has(config.model)
-      ? config.model
-      : models[0]?.value
-
-    return Array.from(new Set(selected.length > 0 ? selected : [fallback]))
-      .filter(Boolean)
-      .slice(0, 4)
-  }, [config.compareModels, config.model, models])
-
-  const submitMessages = useCallback(
-    (baseMessages: MessageType[]) => {
-      const compareModels = config.compareMode ? getCompareModels() : []
-
-      if (compareModels.length > 1) {
-        const compareGroupId = `compare-${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)}`
-        const assistantMessages = compareModels.map((model) =>
-          createLoadingAssistantMessage({
-            compareGroupId,
-            model,
-          })
-        )
-        const nextMessages = [...baseMessages, ...assistantMessages]
-
-        updateMessages(nextMessages)
-        sendCompareChat(
-          nextMessages,
-          assistantMessages.map((message) => ({
-            model: message.model || config.model,
-            assistantMessageKey: message.key,
-          }))
-        )
-        return
-      }
-
-      const assistantMessage = createLoadingAssistantMessage({
-        model: config.model,
-      })
-      const nextMessages = [...baseMessages, assistantMessage]
-      updateMessages(nextMessages)
-      sendChat(nextMessages, config.model, assistantMessage.key)
-    },
-    [
-      config.compareMode,
-      config.model,
-      getCompareModels,
-      sendChat,
-      sendCompareChat,
-      updateMessages,
-    ]
-  )
-
-  const handleSendMessage = (text: string) => {
-    const userMessage = createUserMessage(text)
-    submitMessages([...messages, userMessage])
-  }
-
-  const handleCopyMessage = (message: MessageType) => {
-    // Copy is handled in MessageActions component
-    // eslint-disable-next-line no-console
-    console.log('Message copied:', message.key)
-  }
-
-  const handleRegenerateMessage = (message: MessageType) => {
-    // Find the message index and regenerate from there
-    const messageIndex = messages.findIndex((m) => m.key === message.key)
-    if (messageIndex === -1) return
-
-    if (message.compareGroupId && message.model) {
-      const loadingMessage = createLoadingAssistantMessage({
-        compareGroupId: message.compareGroupId,
-        model: message.model,
-      })
-      const nextMessages = messages.map((item) =>
-        item.key === message.key ? loadingMessage : item
-      )
-      const requestMessages = [...messages.slice(0, messageIndex), loadingMessage]
-      updateMessages(nextMessages)
-      sendChat(requestMessages, message.model, loadingMessage.key)
-      return
-    }
-
-    // Remove messages after this one and regenerate
-    const messagesUpToHere = messages.slice(0, messageIndex)
-    submitMessages(messagesUpToHere)
-  }
-
-  const handleEditMessage = useCallback((message: MessageType) => {
-    setEditingMessageKey(message.key)
-  }, [])
-
-  const handleEditOpenChange = useCallback((open: boolean) => {
-    if (!open) setEditingMessageKey(null)
-  }, [])
-
-  // Apply edit and optionally re-submit from the edited user message
-  const applyEdit = useCallback(
-    (newContent: string, submit: boolean) => {
-      if (!editingMessageKey) return
-      const index = messages.findIndex((m) => m.key === editingMessageKey)
-      if (index === -1) return
-
-      const updated = messages.map((m) =>
-        m.key === editingMessageKey
-          ? { ...m, versions: [{ ...m.versions[0], content: newContent }] }
-          : m
-      )
-
-      setEditingMessageKey(null)
-
-      if (!submit || updated[index].from !== 'user') {
-        updateMessages(updated)
-        return
-      }
-
-      submitMessages(updated.slice(0, index + 1))
-    },
-    [editingMessageKey, messages, updateMessages, submitMessages]
-  )
-
-  const handleDeleteMessage = (message: MessageType) => {
-    const newMessages = messages.filter((m) => m.key !== message.key)
-    updateMessages(newMessages)
-  }
 
   return (
-    <div className='relative flex size-full overflow-hidden'>
-      <PlaygroundSessionList
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        collapsed={sessionListCollapsed}
-        onToggleCollapsed={toggleSessionList}
-        onCreateSession={createSession}
-        onSelectSession={selectSession}
-        onDeleteSession={deleteSession}
-      />
+    <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+      {/* Full-width scroll container: scrolling works even over side whitespace */}
+      <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
+        <PlaygroundChat
+          messages={messages}
+          isLoadingMessages={isLoadingMessages}
+          onRegenerateMessage={handleRegenerateMessage}
+          onEditMessage={handleEditMessage}
+          onDeleteMessage={handleDeleteMessage}
+          onSelectPrompt={handleSendMessage}
+          isGenerating={isGenerating}
+          editingKey={editingMessageKey}
+          onCancelEdit={handleEditOpenChange}
+          onSaveEdit={(newContent) => applyEdit(newContent, false)}
+          onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
+        />
+      </div>
 
-      <div className='flex min-w-0 flex-1 flex-col overflow-hidden'>
-        <div className='flex flex-1 flex-col overflow-hidden'>
-          <PlaygroundChat
-            messages={messages}
-            onCopyMessage={handleCopyMessage}
-            onRegenerateMessage={handleRegenerateMessage}
-            onEditMessage={handleEditMessage}
-            onDeleteMessage={handleDeleteMessage}
-            isGenerating={isGenerating}
-            editingKey={editingMessageKey}
-            onCancelEdit={handleEditOpenChange}
-            onSaveEdit={(newContent) => applyEdit(newContent, false)}
-            onSaveEditAndSubmit={(newContent) => applyEdit(newContent, true)}
-          />
-        </div>
-
-        <div className='mx-auto w-full max-w-4xl'>
-          <div className='flex items-center justify-end gap-1.5 px-3 pb-2 md:px-1'>
-            <PlaygroundJsonViewer
-              messages={messages}
-              config={config}
-              parameterEnabled={parameterEnabled}
-            />
-            <PlaygroundDataBrowser
-              messages={messages}
-              onClearMessages={clearMessages}
-              onImportMessages={(imported) => updateMessages(imported)}
-            />
-            <PlaygroundSettings
-              config={config}
-              parameterEnabled={parameterEnabled}
-              onConfigChange={updateConfig}
-              onParameterEnabledChange={updateParameterEnabled}
-              onReset={resetConfig}
-            />
-          </div>
-
-          <PlaygroundInput
-            disabled={isGenerating}
-            groups={groups}
-            groupValue={config.group}
-            isGenerating={isGenerating}
-            isModelLoading={isLoadingModels}
-            modelValue={config.model}
-            models={models}
-            compareMode={config.compareMode}
-            compareModels={config.compareModels}
-            quickPrompts={quickPrompts}
-            onCreateSession={createSession}
-            onCompareModeChange={(value) => updateConfig('compareMode', value)}
-            onCompareModelsChange={(value) =>
-              updateConfig('compareModels', value)
-            }
-            onGroupChange={(value) => updateConfig('group', value)}
-            onModelChange={(value) => updateConfig('model', value)}
-            onQuickPromptsChange={updateQuickPrompts}
-            onStop={stopGeneration}
-            onSubmit={handleSendMessage}
-          />
-        </div>
+      {/* Input area: center content and constrain to the same container width */}
+      <div className='mx-auto w-full max-w-4xl'>
+        <PlaygroundInput
+          config={config}
+          disabled={isGenerating}
+          groups={groups}
+          groupValue={config.group}
+          isGenerating={isGenerating}
+          isModelLoading={isLoadingModels}
+          modelValue={config.model}
+          models={models}
+          onGroupChange={(value) => updateConfig('group', value)}
+          onConfigChange={updateConfig}
+          onClearMessages={handleClearMessages}
+          onModelChange={(value) => updateConfig('model', value)}
+          onParameterEnabledChange={updateParameterEnabled}
+          onStop={stopGeneration}
+          onSubmit={handleSendMessage}
+          parameterEnabled={parameterEnabled}
+          hasMessages={messages.length > 0}
+        />
       </div>
     </div>
   )
