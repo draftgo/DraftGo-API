@@ -162,6 +162,7 @@ var ChannelDisableThreshold = 5.0
 var ChannelSlowRequestThreshold = 0.0
 var ChannelNonStreamSlowRequestThreshold = 0.0
 var StreamFirstResponseTimeoutSeconds = 0.0
+var TimeoutFollowupAction = "none"
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
 var ChannelDisableWindowMinutes = 5
@@ -170,6 +171,12 @@ var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
 var RetryTimes = 0
+
+const (
+	TimeoutFollowupActionNone     = "none"
+	TimeoutFollowupActionRetry    = "retry"
+	TimeoutFollowupActionTransfer = "transfer"
+)
 
 //var RootUserEmail = ""
 

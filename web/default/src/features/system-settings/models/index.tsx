@@ -66,6 +66,7 @@ const defaultModelSettings: ModelSettings = {
   ChannelDisableThreshold: '',
   StreamFirstResponseTimeoutSeconds: '',
   ChannelNonStreamSlowRequestThreshold: '',
+  TimeoutFollowupAction: 'none',
   ChannelDisableWindowMinutes: '5',
   ChannelDisableFailureThreshold: '3',
   AutomaticDisableChannelEnabled: false,

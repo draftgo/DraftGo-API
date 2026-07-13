@@ -5269,7 +5269,12 @@
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放",
     "Streaming first-token timeout (seconds)": "流式首字超时（秒）",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed. The request keeps streaming and 0 disables this rule.": "流式文本请求在该超时内仍未收到首字时，当前渠道判定为失败。请求会继续流式进行，0 表示关闭此规则。",
+    "If a streaming text request receives no first token before this timeout, the configured post-timeout action is applied. 0 disables this rule.": "流式文本请求在该超时内仍未收到首字时，执行配置的超时后继行为。0 表示关闭此规则。",
+    "Post-timeout action": "超时后继行为",
+    "None (continue current channel)": "无（继续当前渠道）",
+    "Retry current channel": "重试当前渠道",
+    "Transfer to next channel": "转移到下个渠道",
+    "Only controls timeout events. Other channel failures continue to use the existing automatic retry mechanism.": "仅控制超时事件，其他渠道失败仍使用现有的系统自动重试机制。",
     "Choose an application and map models for the CC Switch provider import.": "选择应用并为 CC Switch 服务商导入映射模型。",
     "Only the primary model is required. Optional model fields can be left blank.": "仅主模型必填，其他模型字段可以留空。"
   }

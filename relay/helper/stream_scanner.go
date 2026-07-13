@@ -284,6 +284,14 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			if !strings.HasPrefix(data, "[DONE]") {
 				info.SetFirstResponseTime()
 				info.ReceivedResponseCount++
+				if common.TimeoutFollowupAction != common.TimeoutFollowupActionNone {
+					if committer, ok := c.Writer.(interface{ CommitTimeoutResponse() error }); ok {
+						if err := committer.CommitTimeoutResponse(); err != nil {
+							info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
+							return
+						}
+					}
+				}
 				firstResponseMu.Lock()
 				firstResponseReceived = true
 				if firstResponseTimer != nil {
@@ -345,8 +353,13 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 			err := fmt.Errorf("stream first response timeout after %.2fs", common.StreamFirstResponseTimeoutSeconds)
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonFirstResponseTimeout, err)
-			RecordStreamFirstResponseTimeoutFailure(c, info, err)
-			waitForStreamEnd()
+			if common.TimeoutFollowupAction == common.TimeoutFollowupActionNone {
+				RecordStreamFirstResponseTimeoutFailure(c, info, err)
+				waitForStreamEnd()
+			} else {
+				info.MarkTimeoutFollowupTriggered()
+				stop()
+			}
 		case <-ticker.C:
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonTimeout, nil)
 		case <-stopChan:
@@ -408,7 +421,7 @@ func RecordStreamFirstResponseTimeoutFailure(c *gin.Context, info *relaycommon.R
 }
 
 func StreamFirstResponseTimeoutEnabled(info *relaycommon.RelayInfo) bool {
-	if common.StreamFirstResponseTimeoutSeconds <= 0 || info == nil {
+	if common.StreamFirstResponseTimeoutSeconds <= 0 || info == nil || !info.IsStream {
 		return false
 	}
 	if info.RelayFormat == types.RelayFormatClaude {

@@ -37,10 +37,13 @@ import { IconSearch } from '@douyinfe/semi-icons';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
 const MODELS_DEV_PRESET_ID = -101;
+const DRAFTGO_PRESET_ID = -102;
 const OFFICIAL_RATIO_PRESET_NAME = '官方倍率预设';
 const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设';
+const DRAFTGO_PRESET_NAME = 'DraftGo';
 const OFFICIAL_RATIO_PRESET_BASE_URL = 'https://basellm.github.io';
 const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev';
+const DRAFTGO_PRESET_BASE_URL = 'https://draftgo.cn';
 
 const ChannelSelectorModal = forwardRef(
   (
@@ -79,10 +82,13 @@ const ChannelSelectorModal = forwardRef(
       return (
         id === OFFICIAL_RATIO_PRESET_ID ||
         id === MODELS_DEV_PRESET_ID ||
+        id === DRAFTGO_PRESET_ID ||
         base === OFFICIAL_RATIO_PRESET_BASE_URL ||
         base === MODELS_DEV_PRESET_BASE_URL ||
+        base === DRAFTGO_PRESET_BASE_URL ||
         name === OFFICIAL_RATIO_PRESET_NAME ||
-        name === MODELS_DEV_PRESET_NAME
+        name === MODELS_DEV_PRESET_NAME ||
+        name === DRAFTGO_PRESET_NAME
       );
     };
 

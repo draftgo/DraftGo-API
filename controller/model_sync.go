@@ -20,10 +20,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// 上游地址
 const (
-	upstreamModelsURL  = "https://basellm.github.io/llm-metadata/api/newapi/models.json"
-	upstreamVendorsURL = "https://basellm.github.io/llm-metadata/api/newapi/vendors.json"
+	defaultSyncSource = "official"
+	draftGoSyncSource = "draftgo"
+	draftGoModelsURL  = "https://draftgo.cn/api/x/draftgo/models.json"
+	draftGoVendorsURL = "https://draftgo.cn/api/x/draftgo/vendors.json"
 )
 
 func normalizeLocale(locale string) (string, bool) {
@@ -40,7 +41,20 @@ func getUpstreamBase() string {
 	return common.GetEnvOrDefaultString("SYNC_UPSTREAM_BASE", "https://basellm.github.io/llm-metadata")
 }
 
-func getUpstreamURLs(locale string) (modelsURL, vendorsURL string) {
+func normalizeSyncSource(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case draftGoSyncSource:
+		return draftGoSyncSource
+	default:
+		return defaultSyncSource
+	}
+}
+
+func getUpstreamURLs(locale, source string) (modelsURL, vendorsURL string) {
+	if normalizeSyncSource(source) == draftGoSyncSource {
+		return draftGoModelsURL, draftGoVendorsURL
+	}
+
 	base := strings.TrimRight(getUpstreamBase(), "/")
 	if l, ok := normalizeLocale(locale); ok && l != "" {
 		return fmt.Sprintf("%s/api/i18n/%s/newapi/models.json", base, l),
@@ -87,6 +101,7 @@ type overwriteField struct {
 type syncRequest struct {
 	Overwrite []overwriteField `json:"overwrite"`
 	Locale    string           `json:"locale"`
+	Source    string           `json:"source"`
 }
 
 func newHTTPClient() *http.Client {
@@ -269,6 +284,7 @@ func SyncUpstreamModels(c *gin.Context) {
 	var req syncRequest
 	// 允许空体
 	_ = c.ShouldBindJSON(&req)
+	req.Source = normalizeSyncSource(req.Source)
 	// 1) 获取未配置模型列表
 	missing, err := model.GetMissingModels()
 	if err != nil {
@@ -279,7 +295,7 @@ func SyncUpstreamModels(c *gin.Context) {
 
 	// 若既无缺失模型需要创建，也未指定覆盖更新字段，则无需请求上游数据，直接返回
 	if len(missing) == 0 && len(req.Overwrite) == 0 {
-		modelsURL, vendorsURL := getUpstreamURLs(req.Locale)
+		modelsURL, vendorsURL := getUpstreamURLs(req.Locale, req.Source)
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
@@ -290,6 +306,7 @@ func SyncUpstreamModels(c *gin.Context) {
 				"created_list":    []string{},
 				"updated_list":    []string{},
 				"source": gin.H{
+					"name":        req.Source,
 					"locale":      req.Locale,
 					"models_url":  modelsURL,
 					"vendors_url": vendorsURL,
@@ -304,7 +321,7 @@ func SyncUpstreamModels(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	modelsURL, vendorsURL := getUpstreamURLs(req.Locale)
+	modelsURL, vendorsURL := getUpstreamURLs(req.Locale, req.Source)
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
 	var modelsEnv upstreamEnvelope[upstreamModel]
 	var fetchErr error
@@ -323,7 +340,7 @@ func SyncUpstreamModels(c *gin.Context) {
 	}()
 	wg.Wait()
 	if fetchErr != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取上游模型失败: " + fetchErr.Error(), "locale": req.Locale, "source_urls": gin.H{"models_url": modelsURL, "vendors_url": vendorsURL}})
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取上游模型失败: " + fetchErr.Error(), "locale": req.Locale, "source": req.Source, "source_urls": gin.H{"models_url": modelsURL, "vendors_url": vendorsURL}})
 		return
 	}
 
@@ -460,6 +477,7 @@ func SyncUpstreamModels(c *gin.Context) {
 			"created_list":    createdList,
 			"updated_list":    updatedList,
 			"source": gin.H{
+				"name":        req.Source,
 				"locale":      req.Locale,
 				"models_url":  modelsURL,
 				"vendors_url": vendorsURL,
@@ -503,7 +521,8 @@ func SyncUpstreamPreview(c *gin.Context) {
 	defer cancel()
 
 	locale := c.Query("locale")
-	modelsURL, vendorsURL := getUpstreamURLs(locale)
+	source := normalizeSyncSource(c.Query("source"))
+	modelsURL, vendorsURL := getUpstreamURLs(locale, source)
 
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
 	var modelsEnv upstreamEnvelope[upstreamModel]
@@ -522,7 +541,7 @@ func SyncUpstreamPreview(c *gin.Context) {
 	}()
 	wg.Wait()
 	if fetchErr != nil {
-		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取上游模型失败: " + fetchErr.Error(), "locale": locale, "source_urls": gin.H{"models_url": modelsURL, "vendors_url": vendorsURL}})
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "获取上游模型失败: " + fetchErr.Error(), "locale": locale, "source": source, "source_urls": gin.H{"models_url": modelsURL, "vendors_url": vendorsURL}})
 		return
 	}
 
@@ -625,6 +644,7 @@ func SyncUpstreamPreview(c *gin.Context) {
 			"missing":   missing,
 			"conflicts": conflicts,
 			"source": gin.H{
+				"name":        source,
 				"locale":      locale,
 				"models_url":  modelsURL,
 				"vendors_url": vendorsURL,

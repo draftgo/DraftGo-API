@@ -44,6 +44,7 @@ import type { UpstreamChannel } from '../types'
 import {
   CHANNEL_STATUS_CONFIG,
   DEFAULT_ENDPOINT,
+  DRAFTGO_PRESET_ID,
   ENDPOINT_OPTIONS,
   MODELS_DEV_PRESET_ID,
   OFFICIAL_CHANNEL_ID,
@@ -64,7 +65,9 @@ type ChannelSelectorDialogProps = {
 // negative IDs, so matching by ID alone is reliable and self-documenting.
 function isOfficialChannel(channel: UpstreamChannel): boolean {
   return (
-    channel.id === OFFICIAL_CHANNEL_ID || channel.id === MODELS_DEV_PRESET_ID
+    channel.id === OFFICIAL_CHANNEL_ID ||
+    channel.id === MODELS_DEV_PRESET_ID ||
+    channel.id === DRAFTGO_PRESET_ID
   )
 }
 

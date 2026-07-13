@@ -516,14 +516,22 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		info.SetUpstreamStartTime(time.Now())
 	}
 	var firstResponseTimer *time.Timer
+	var firstResponseCancel context.CancelFunc
 	if firstResponseTimeoutEnabled {
 		firstResponseTimeout := helper.StreamFirstResponseTimeoutDuration()
 		if firstResponseTimeout > 0 {
-			firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
-				helper.RecordStreamFirstResponseTimeoutFailure(c, info,
-					fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds))
-			})
+			if common2.TimeoutFollowupAction == common2.TimeoutFollowupActionNone {
+				firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
+					helper.RecordStreamFirstResponseTimeoutFailure(c, info,
+						fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds))
+				})
+			} else {
+				requestCtx, firstResponseCancel = context.WithTimeout(requestCtx, firstResponseTimeout)
+			}
 		}
+	}
+	if firstResponseCancel != nil {
+		defer firstResponseCancel()
 	}
 	req = req.WithContext(requestCtx)
 
@@ -532,6 +540,10 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		firstResponseTimer.Stop()
 	}
 	if err != nil {
+		if firstResponseCancel != nil && errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
+			info.MarkTimeoutFollowupTriggered()
+			return nil, fmt.Errorf("stream first response timeout after %.2fs: %w", common2.StreamFirstResponseTimeoutSeconds, context.DeadlineExceeded)
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}

@@ -234,6 +234,7 @@ export type ModelSettings = {
   ChannelDisableThreshold: string
   StreamFirstResponseTimeoutSeconds: string
   ChannelNonStreamSlowRequestThreshold: string
+  TimeoutFollowupAction: 'none' | 'retry' | 'transfer'
   ChannelDisableWindowMinutes: string
   ChannelDisableFailureThreshold: string
   AutomaticDisableChannelEnabled: boolean

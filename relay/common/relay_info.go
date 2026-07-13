@@ -87,17 +87,18 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
-	TokenId           int
-	TokenKey          string
-	TokenGroup        string
-	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
-	TokenUnlimited    bool
-	StartTime         time.Time
-	UpstreamStartTime time.Time
-	FirstResponseTime time.Time
-	isFirstResponse   bool
+	TokenId                 int
+	TokenKey                string
+	TokenGroup              string
+	UserId                  int
+	UsingGroup              string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup               string // 用户所在分组
+	TokenUnlimited          bool
+	StartTime               time.Time
+	UpstreamStartTime       time.Time
+	TimeoutAttemptStartTime time.Time
+	FirstResponseTime       time.Time
+	isFirstResponse         bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -186,6 +187,7 @@ type RelayInfo struct {
 
 	StreamStatus                        *StreamStatus
 	firstResponseTimeoutFailureRecorded atomic.Bool
+	timeoutFollowupTriggered            atomic.Bool
 
 	ThinkingContentInfo
 	TokenCountMeta
@@ -697,6 +699,26 @@ func (info *RelayInfo) MarkStreamFirstResponseTimeoutFailureRecorded() bool {
 		return false
 	}
 	return info.firstResponseTimeoutFailureRecorded.CompareAndSwap(false, true)
+}
+
+func (info *RelayInfo) MarkTimeoutFollowupTriggered() {
+	if info != nil {
+		info.timeoutFollowupTriggered.Store(true)
+	}
+}
+
+func (info *RelayInfo) TimeoutFollowupTriggered() bool {
+	return info != nil && info.timeoutFollowupTriggered.Load()
+}
+
+func (info *RelayInfo) ResetTimeoutAttemptState() {
+	if info == nil {
+		return
+	}
+	info.StreamStatus = nil
+	info.timeoutFollowupTriggered.Store(false)
+	info.firstResponseTimeoutFailureRecorded.Store(false)
+	info.TimeoutAttemptStartTime = time.Now()
 }
 
 type TaskRelayInfo struct {

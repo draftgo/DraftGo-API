@@ -190,6 +190,12 @@ export function getSyncSourceOptions(t: TFunction) {
       disabled: false,
     },
     {
+      label: 'DraftGo',
+      value: 'draftgo' as SyncSource,
+      description: t('Sync from the DraftGo model metadata repository.'),
+      disabled: false,
+    },
+    {
       label: t('Configuration File'),
       value: 'config' as SyncSource,
       description: t('Upload or reference a local configuration file.'),

@@ -21,7 +21,7 @@ export const DEFAULT_ENDPOINT = '/api/pricing'
 // ---------------------------------------------------------------------------
 // Built-in upstream ratio presets
 //
-// The backend (`controller/ratio_sync.go`) synthesizes two virtual channels and
+// The backend (`controller/ratio_sync.go`) synthesizes virtual channels and
 // returns them in the syncable channels response. The constants below mirror
 // the backend literals one-to-one; do NOT translate the *_NAME values because
 // they are wire-protocol identifiers, not user-facing labels.
@@ -41,6 +41,12 @@ export const MODELS_DEV_PRESET_ID = -101
 export const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设'
 export const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev'
 export const MODELS_DEV_PRESET_ENDPOINT = 'https://models.dev/api.json'
+
+export const DRAFTGO_PRESET_ID = -102
+export const DRAFTGO_PRESET_NAME = 'DraftGo'
+export const DRAFTGO_PRESET_BASE_URL = 'https://draftgo.cn'
+export const DRAFTGO_PRESET_ENDPOINT =
+  '/api/x/draftgo/ratio_config-v1-base.json'
 
 export const OPENROUTER_ENDPOINT = 'openrouter'
 

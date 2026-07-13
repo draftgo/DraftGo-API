@@ -56,9 +56,13 @@ const OFFICIAL_RATIO_PRESET_BASE_URL = 'https://basellm.github.io';
 const OFFICIAL_RATIO_PRESET_ENDPOINT =
   '/llm-metadata/api/newapi/ratio_config-v1-base.json';
 const MODELS_DEV_PRESET_ID = -101;
+const DRAFTGO_PRESET_ID = -102;
 const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设';
 const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev';
 const MODELS_DEV_PRESET_ENDPOINT = 'https://models.dev/api.json';
+const DRAFTGO_PRESET_NAME = 'DraftGo';
+const DRAFTGO_PRESET_BASE_URL = 'https://draftgo.cn';
+const DRAFTGO_PRESET_ENDPOINT = '/api/x/draftgo/ratio_config-v1-base.json';
 
 function ConflictConfirmModal({ t, visible, items, loading, onOk, onCancel }) {
   const isMobile = useIsMobile();
@@ -174,9 +178,15 @@ export default function UpstreamRatioSync(props) {
               id === MODELS_DEV_PRESET_ID ||
               base === MODELS_DEV_PRESET_BASE_URL ||
               name === MODELS_DEV_PRESET_NAME;
+            const isDraftGoPreset =
+              id === DRAFTGO_PRESET_ID ||
+              base === DRAFTGO_PRESET_BASE_URL ||
+              name === DRAFTGO_PRESET_NAME;
             const isOpenRouter = channelType === 20;
             if (!merged[id]) {
-              if (isModelsDevPreset) {
+              if (isDraftGoPreset) {
+                merged[id] = DRAFTGO_PRESET_ENDPOINT;
+              } else if (isModelsDevPreset) {
                 merged[id] = MODELS_DEV_PRESET_ENDPOINT;
               } else if (isOfficialRatioPreset) {
                 merged[id] = OFFICIAL_RATIO_PRESET_ENDPOINT;

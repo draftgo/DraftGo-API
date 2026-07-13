@@ -77,6 +77,7 @@ const MODELS_SECTIONS = [
             settings.StreamFirstResponseTimeoutSeconds,
           ChannelNonStreamSlowRequestThreshold:
             settings.ChannelNonStreamSlowRequestThreshold,
+          TimeoutFollowupAction: settings.TimeoutFollowupAction,
           ChannelDisableWindowMinutes: settings.ChannelDisableWindowMinutes,
           ChannelDisableFailureThreshold:
             settings.ChannelDisableFailureThreshold,

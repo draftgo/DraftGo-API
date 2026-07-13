@@ -494,8 +494,13 @@ func TestStreamScannerHandler_StreamStatus_Timeout(t *testing.T) {
 
 func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
 	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
+	oldTimeoutFollowupAction := common.TimeoutFollowupAction
 	common.StreamFirstResponseTimeoutSeconds = 0.05
-	t.Cleanup(func() { common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout })
+	common.TimeoutFollowupAction = common.TimeoutFollowupActionNone
+	t.Cleanup(func() {
+		common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common.TimeoutFollowupAction = oldTimeoutFollowupAction
+	})
 
 	pr, pw := io.Pipe()
 	t.Cleanup(func() {
@@ -518,6 +523,7 @@ func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
 	resp := &http.Response{Body: pr}
 	info := &relaycommon.RelayInfo{
 		RelayMode:   relayconstant.RelayModeChatCompletions,
+		IsStream:    true,
 		ChannelMeta: &relaycommon.ChannelMeta{ChannelId: 123, ChannelType: 1, ApiKey: "test-key"},
 	}
 
@@ -543,6 +549,44 @@ func TestStreamScannerHandler_StreamStatus_FirstResponseTimeout(t *testing.T) {
 	assert.Equal(t, 1, info.ReceivedResponseCount)
 }
 
+func TestStreamScannerHandler_FirstResponseTimeoutStopsForFollowup(t *testing.T) {
+	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
+	oldTimeoutFollowupAction := common.TimeoutFollowupAction
+	common.StreamFirstResponseTimeoutSeconds = 0.02
+	common.TimeoutFollowupAction = common.TimeoutFollowupActionRetry
+	t.Cleanup(func() {
+		common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common.TimeoutFollowupAction = oldTimeoutFollowupAction
+	})
+
+	pr, pw := io.Pipe()
+	t.Cleanup(func() {
+		_ = pr.Close()
+		_ = pw.Close()
+	})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeChatCompletions, IsStream: true}
+
+	done := make(chan struct{})
+	go func() {
+		StreamScannerHandler(c, &http.Response{Body: pr}, info, func(data string, sr *StreamResult) {})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not stop after first-response timeout")
+	}
+
+	require.NotNil(t, info.StreamStatus)
+	assert.Equal(t, relaycommon.StreamEndReasonFirstResponseTimeout, info.StreamStatus.EndReason)
+	assert.True(t, info.TimeoutFollowupTriggered())
+	assert.Equal(t, 0, info.ReceivedResponseCount)
+}
+
 func TestStreamFirstResponseTimeoutEnabled_ClaudeNativeMessages(t *testing.T) {
 	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
 	common.StreamFirstResponseTimeoutSeconds = 8
@@ -551,9 +595,23 @@ func TestStreamFirstResponseTimeoutEnabled_ClaudeNativeMessages(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		RelayMode:   relayconstant.RelayModeUnknown,
 		RelayFormat: types.RelayFormatClaude,
+		IsStream:    true,
 	}
 
 	require.True(t, StreamFirstResponseTimeoutEnabled(info))
+}
+
+func TestStreamFirstResponseTimeoutDisabledForNonStreamRequest(t *testing.T) {
+	oldFirstResponseTimeout := common.StreamFirstResponseTimeoutSeconds
+	common.StreamFirstResponseTimeoutSeconds = 8
+	t.Cleanup(func() { common.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout })
+
+	info := &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeChatCompletions,
+		IsStream:  false,
+	}
+
+	require.False(t, StreamFirstResponseTimeoutEnabled(info))
 }
 
 func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {

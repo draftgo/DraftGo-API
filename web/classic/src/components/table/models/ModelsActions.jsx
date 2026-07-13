@@ -53,10 +53,11 @@ const ModelsActions = ({
   const [conflicts, setConflicts] = useState([]);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncLocale, setSyncLocale] = useState('zh');
+  const [syncSource, setSyncSource] = useState('official');
 
-  const handleSyncUpstream = async (locale) => {
+  const handleSyncUpstream = async (locale, source) => {
     // 先预览
-    const data = await previewUpstreamDiff?.({ locale });
+    const data = await previewUpstreamDiff?.({ locale, source });
     const conflictItems = data?.conflicts || [];
     if (conflictItems.length > 0) {
       setConflicts(conflictItems);
@@ -64,7 +65,7 @@ const ModelsActions = ({
       return;
     }
     // 无冲突，直接同步缺失
-    await syncUpstream?.({ locale });
+    await syncUpstream?.({ locale, source });
   };
 
   // Handle delete selected models with confirmation
@@ -209,8 +210,9 @@ const ModelsActions = ({
         t={t}
         onConfirm={async ({ option, locale }) => {
           setSyncLocale(locale);
-          if (option === 'official') {
-            await handleSyncUpstream(locale);
+          setSyncSource(option);
+          if (option !== 'config') {
+            await handleSyncUpstream(locale, option);
           }
           setShowSyncModal(false);
         }}
@@ -247,6 +249,7 @@ const ModelsActions = ({
           return await applyUpstreamOverwrite?.({
             overwrite: payload,
             locale: syncLocale,
+            source: syncSource,
           });
         }}
         t={t}

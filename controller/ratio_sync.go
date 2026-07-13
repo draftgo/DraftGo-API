@@ -40,6 +40,9 @@ const (
 	modelsDevPresetID           = -101
 	modelsDevPresetName         = "models.dev 价格预设"
 	modelsDevPresetBaseURL      = "https://models.dev"
+	draftGoPresetID             = -102
+	draftGoPresetName           = "DraftGo"
+	draftGoPresetBaseURL        = "https://draftgo.cn"
 	modelsDevHost               = "models.dev"
 	modelsDevPath               = "/api.json"
 	modelsDevInputCostRatioBase = 1000.0
@@ -1018,6 +1021,13 @@ func GetSyncableChannels(c *gin.Context) {
 		ID:      modelsDevPresetID,
 		Name:    modelsDevPresetName,
 		BaseURL: modelsDevPresetBaseURL,
+		Status:  1,
+	})
+
+	syncableChannels = append(syncableChannels, dto.SyncableChannel{
+		ID:      draftGoPresetID,
+		Name:    draftGoPresetName,
+		BaseURL: draftGoPresetBaseURL,
 		Status:  1,
 	})
 

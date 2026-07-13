@@ -5269,7 +5269,12 @@
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom",
     "Streaming first-token timeout (seconds)": "Streaming first-token timeout (seconds)",
-    "If a streaming text request receives no first token before this timeout, the current channel is treated as failed. The request keeps streaming and 0 disables this rule.": "If a streaming text request receives no first token before this timeout, the current channel is treated as failed. The request keeps streaming and 0 disables this rule.",
+    "If a streaming text request receives no first token before this timeout, the configured post-timeout action is applied. 0 disables this rule.": "If a streaming text request receives no first token before this timeout, the configured post-timeout action is applied. 0 disables this rule.",
+    "Post-timeout action": "Post-timeout action",
+    "None (continue current channel)": "None (continue current channel)",
+    "Retry current channel": "Retry current channel",
+    "Transfer to next channel": "Transfer to next channel",
+    "Only controls timeout events. Other channel failures continue to use the existing automatic retry mechanism.": "Only controls timeout events. Other channel failures continue to use the existing automatic retry mechanism.",
     "Choose an application and map models for the CC Switch provider import.": "Choose an application and map models for the CC Switch provider import.",
     "Only the primary model is required. Optional model fields can be left blank.": "Only the primary model is required. Optional model fields can be left blank."
   }

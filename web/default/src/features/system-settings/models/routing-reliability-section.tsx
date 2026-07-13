@@ -72,6 +72,7 @@ const routingReliabilitySchema = z
     ChannelDisableThreshold: numericString,
     StreamFirstResponseTimeoutSeconds: numericString,
     ChannelNonStreamSlowRequestThreshold: numericString,
+    TimeoutFollowupAction: z.enum(['none', 'retry', 'transfer']),
     ChannelDisableWindowMinutes: numericString,
     ChannelDisableFailureThreshold: numericString,
     AutomaticDisableChannelEnabled: z.boolean(),
@@ -137,6 +138,7 @@ type RoutingReliabilitySectionProps = {
     ChannelDisableThreshold: string
     StreamFirstResponseTimeoutSeconds: string
     ChannelNonStreamSlowRequestThreshold: string
+    TimeoutFollowupAction: 'none' | 'retry' | 'transfer'
     ChannelDisableWindowMinutes: string
     ChannelDisableFailureThreshold: string
     AutomaticDisableChannelEnabled: boolean
@@ -163,6 +165,7 @@ type NormalizedRoutingReliabilityValues = {
   ChannelDisableThreshold: string
   StreamFirstResponseTimeoutSeconds: string
   ChannelNonStreamSlowRequestThreshold: string
+  TimeoutFollowupAction: 'none' | 'retry' | 'transfer'
   ChannelDisableWindowMinutes: string
   ChannelDisableFailureThreshold: string
   AutomaticDisableChannelEnabled: boolean
@@ -180,7 +183,7 @@ type NormalizedRoutingReliabilityValues = {
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
-  return value === 'passive_recovery' ? 'passive_recovery' : 'scheduled_all' 
+  return value === 'passive_recovery' ? 'passive_recovery' : 'scheduled_all'
 }
 
 const buildFormDefaults = (
@@ -192,8 +195,10 @@ const buildFormDefaults = (
     defaults.StreamFirstResponseTimeoutSeconds ?? '',
   ChannelNonStreamSlowRequestThreshold:
     defaults.ChannelNonStreamSlowRequestThreshold ?? '',
+  TimeoutFollowupAction: defaults.TimeoutFollowupAction ?? 'none',
   ChannelDisableWindowMinutes: defaults.ChannelDisableWindowMinutes ?? '5',
-  ChannelDisableFailureThreshold: defaults.ChannelDisableFailureThreshold ?? '3',
+  ChannelDisableFailureThreshold:
+    defaults.ChannelDisableFailureThreshold ?? '3',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -231,6 +236,7 @@ const normalizeDefaults = (
   ChannelNonStreamSlowRequestThreshold: (
     defaults.ChannelNonStreamSlowRequestThreshold ?? ''
   ).trim(),
+  TimeoutFollowupAction: defaults.TimeoutFollowupAction ?? 'none',
   ChannelDisableWindowMinutes: (
     defaults.ChannelDisableWindowMinutes ?? '5'
   ).trim(),
@@ -274,6 +280,7 @@ const normalizeFormValues = (
     values.StreamFirstResponseTimeoutSeconds.trim(),
   ChannelNonStreamSlowRequestThreshold:
     values.ChannelNonStreamSlowRequestThreshold.trim(),
+  TimeoutFollowupAction: values.TimeoutFollowupAction,
   ChannelDisableWindowMinutes: values.ChannelDisableWindowMinutes.trim(),
   ChannelDisableFailureThreshold: values.ChannelDisableFailureThreshold.trim(),
   AutomaticDisableChannelEnabled: values.AutomaticDisableChannelEnabled,
@@ -576,7 +583,7 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'If a streaming text request receives no first token before this timeout, the current channel is treated as failed. The request keeps streaming and 0 disables this rule.'
+                        'If a streaming text request receives no first token before this timeout, the configured post-timeout action is applied. 0 disables this rule.'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -611,6 +618,56 @@ export function RoutingReliabilitySection({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name='TimeoutFollowupAction'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Post-timeout action')}</FormLabel>
+                  <Select
+                    items={[
+                      {
+                        value: 'none',
+                        label: t('None (continue current channel)'),
+                      },
+                      { value: 'retry', label: t('Retry current channel') },
+                      {
+                        value: 'transfer',
+                        label: t('Transfer to next channel'),
+                      },
+                    ]}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='none'>
+                          {t('None (continue current channel)')}
+                        </SelectItem>
+                        <SelectItem value='retry'>
+                          {t('Retry current channel')}
+                        </SelectItem>
+                        <SelectItem value='transfer'>
+                          {t('Transfer to next channel')}
+                        </SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {t(
+                      'Only controls timeout events. Other channel failures continue to use the existing automatic retry mechanism.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
 
           <Separator />

@@ -440,7 +440,26 @@ func recordSlowTextRequestIfNeeded(ctx *gin.Context, relayInfo *relaycommon.Rela
 	}
 }
 
+func ShouldApplyNonStreamTimeoutFollowup(relayInfo *relaycommon.RelayInfo, now time.Time) bool {
+	if relayInfo == nil || relayInfo.IsStream || common.TimeoutFollowupAction == common.TimeoutFollowupActionNone {
+		return false
+	}
+	if !isTextSlowRequestEligible(relayInfo) {
+		return false
+	}
+	thresholdSeconds := textSlowRequestThreshold(relayInfo)
+	startTime := relayInfo.TimeoutAttemptStartTime
+	if startTime.IsZero() {
+		startTime = relayInfo.StartTime
+	}
+	return thresholdSeconds > 0 && now.Sub(startTime).Seconds() > thresholdSeconds
+}
+
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {
+	if relayInfo.TimeoutFollowupTriggered() || ShouldApplyNonStreamTimeoutFollowup(relayInfo, time.Now()) {
+		relayInfo.MarkTimeoutFollowupTriggered()
+		return
+	}
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
 	if usage == nil {

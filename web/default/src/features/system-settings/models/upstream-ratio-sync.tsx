@@ -42,6 +42,8 @@ import {
 } from './conflict-confirm-dialog'
 import {
   DEFAULT_ENDPOINT,
+  DRAFTGO_PRESET_ENDPOINT,
+  DRAFTGO_PRESET_ID,
   MODELS_DEV_PRESET_ENDPOINT,
   MODELS_DEV_PRESET_ID,
   OFFICIAL_CHANNEL_ENDPOINT,
@@ -85,10 +87,11 @@ type UpstreamRatioSyncProps = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// The two synthesized presets always carry stable negative IDs assigned by
+// The synthesized presets always carry stable negative IDs assigned by
 // `controller/ratio_sync.go`; matching by ID alone is sufficient and avoids
 // fragile name/base_url comparisons.
 function getDefaultEndpointForChannel(channel: UpstreamChannel): string {
+  if (channel.id === DRAFTGO_PRESET_ID) return DRAFTGO_PRESET_ENDPOINT
   if (channel.id === MODELS_DEV_PRESET_ID) return MODELS_DEV_PRESET_ENDPOINT
   if (channel.id === OFFICIAL_CHANNEL_ID) return OFFICIAL_CHANNEL_ENDPOINT
   if (channel.type === OPENROUTER_CHANNEL_TYPE) return OPENROUTER_ENDPOINT

@@ -194,10 +194,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	var retryCurrentChannel *model.Channel
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
-		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		relayInfo.ResetTimeoutAttemptState()
+		var channel *model.Channel
+		var channelErr *types.NewAPIError
+		if retryCurrentChannel != nil {
+			channel = retryCurrentChannel
+			retryCurrentChannel = nil
+			channelErr = middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName)
+		} else {
+			channel, channelErr = getChannel(c, relayInfo, retryParam)
+		}
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
@@ -217,6 +227,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		originalWriter := c.Writer
+		var bufferedWriter *timeoutResponseWriter
+		shouldBufferTimeoutResponse := common.TimeoutFollowupAction != common.TimeoutFollowupActionNone &&
+			relayFormat != types.RelayFormatOpenAIRealtime &&
+			((relayInfo.IsStream && common.StreamFirstResponseTimeoutSeconds > 0) ||
+				(!relayInfo.IsStream && common.ChannelNonStreamSlowRequestThreshold > 0))
+		if shouldBufferTimeoutResponse {
+			bufferedWriter = newTimeoutResponseWriter(originalWriter)
+			c.Writer = bufferedWriter
+		}
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -227,8 +248,25 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		default:
 			newAPIError = relayHandler(c, relayInfo)
 		}
+		c.Writer = originalWriter
+
+		if relayInfo.TimeoutFollowupTriggered() {
+			errorCode := types.ErrorCodeChannelResponseTimeExceeded
+			message := fmt.Sprintf("non-streaming text request exceeded %.2fs", common.ChannelNonStreamSlowRequestThreshold)
+			if relayInfo.IsStream {
+				errorCode = types.ErrorCodeChannelStreamFirstResponseTimeout
+				message = fmt.Sprintf("stream first response timeout after %.2fs", common.StreamFirstResponseTimeoutSeconds)
+			}
+			newAPIError = types.NewOpenAIError(errors.New(message), errorCode, http.StatusGatewayTimeout)
+		}
 
 		if newAPIError == nil {
+			if bufferedWriter != nil {
+				if err := bufferedWriter.commit(); err != nil {
+					newAPIError = types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+					break
+				}
+			}
 			relayInfo.LastError = nil
 			return
 		}
@@ -237,6 +275,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		if relayInfo.TimeoutFollowupTriggered() {
+			if common.RetryTimes-retryParam.GetRetry() <= 0 {
+				break
+			}
+			if common.TimeoutFollowupAction == common.TimeoutFollowupActionRetry {
+				retryCurrentChannel = channel
+			}
+			continue
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break

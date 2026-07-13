@@ -295,7 +295,7 @@ export type SyncLocale = 'zh' | 'en' | 'ja'
 /**
  * Sync upstream source
  */
-export type SyncSource = 'official' | 'config'
+export type SyncSource = 'official' | 'draftgo' | 'config'
 
 // ============================================================================
 // Model Deployments Types

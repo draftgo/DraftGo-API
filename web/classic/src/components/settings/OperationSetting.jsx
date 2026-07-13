@@ -68,6 +68,7 @@ const OperationSetting = () => {
     ChannelDisableThreshold: 0,
     StreamFirstResponseTimeoutSeconds: 0,
     ChannelNonStreamSlowRequestThreshold: 0,
+    TimeoutFollowupAction: 'none',
     QuotaRemindThreshold: 0,
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,

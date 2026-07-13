@@ -37,6 +37,7 @@ export default function SettingsMonitoring(props) {
     ChannelDisableThreshold: '',
     StreamFirstResponseTimeoutSeconds: '',
     ChannelNonStreamSlowRequestThreshold: '',
+    TimeoutFollowupAction: 'none',
     QuotaRemindThreshold: '',
     AutomaticDisableChannelEnabled: false,
     AutomaticEnableChannelEnabled: false,
@@ -172,6 +173,30 @@ export default function SettingsMonitoring(props) {
             </Row>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  label={t('超时后继行为')}
+                  field={'TimeoutFollowupAction'}
+                  extraText={t(
+                    '仅控制超时事件，不影响其他渠道失败触发的系统自动重试',
+                  )}
+                  onChange={(value) =>
+                    setInputs({ ...inputs, TimeoutFollowupAction: value })
+                  }
+                >
+                  <Form.Select.Option value='none'>
+                    {t('无（继续当前渠道）')}
+                  </Form.Select.Option>
+                  <Form.Select.Option value='retry'>
+                    {t('重试（当前渠道）')}
+                  </Form.Select.Option>
+                  <Form.Select.Option value='transfer'>
+                    {t('转移（下个渠道）')}
+                  </Form.Select.Option>
+                </Form.Select>
+              </Col>
+            </Row>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   label={t('测试所有渠道的最长响应时间')}
                   step={1}
@@ -214,7 +239,7 @@ export default function SettingsMonitoring(props) {
                   min={0}
                   suffix={t('秒')}
                   extraText={t(
-                    '流式文本请求超过该时间仍无首字时，判定当前渠道失败并重试下一个渠道，0 表示关闭',
+                    '流式文本请求超过该时间仍无首字时，执行配置的超时后继行为，0 表示关闭',
                   )}
                   placeholder={''}
                   field={'StreamFirstResponseTimeoutSeconds'}
