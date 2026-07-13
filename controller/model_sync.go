@@ -23,6 +23,7 @@ import (
 const (
 	defaultSyncSource = "official"
 	draftGoSyncSource = "draftgo"
+	configSyncSource  = "config"
 	draftGoModelsURL  = "https://draftgo.cn/api/x/draftgo/models.json"
 	draftGoVendorsURL = "https://draftgo.cn/api/x/draftgo/vendors.json"
 )
@@ -45,6 +46,8 @@ func normalizeSyncSource(source string) string {
 	switch strings.ToLower(strings.TrimSpace(source)) {
 	case draftGoSyncSource:
 		return draftGoSyncSource
+	case configSyncSource:
+		return configSyncSource
 	default:
 		return defaultSyncSource
 	}

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -198,14 +199,17 @@ func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.
 
 func TestDoRequest_StreamFirstResponseTimeoutIncludesResponseHeaderWait(t *testing.T) {
 	oldFirstResponseTimeout := common2.StreamFirstResponseTimeoutSeconds
+	oldTimeoutFollowupAction := common2.TimeoutFollowupAction
 	oldRelayTimeout := common2.RelayTimeout
 	t.Cleanup(func() {
 		common2.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common2.TimeoutFollowupAction = oldTimeoutFollowupAction
 		common2.RelayTimeout = oldRelayTimeout
 		service.InitHttpClient()
 	})
 
 	common2.StreamFirstResponseTimeoutSeconds = 0.03
+	common2.TimeoutFollowupAction = common2.TimeoutFollowupActionNone
 	common2.RelayTimeout = 0
 	service.InitHttpClient()
 
@@ -234,4 +238,88 @@ func TestDoRequest_StreamFirstResponseTimeoutIncludesResponseHeaderWait(t *testi
 	}
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+}
+
+func TestDoRequest_TimeoutFollowupCancelsResponseHeaderWait(t *testing.T) {
+	oldFirstResponseTimeout := common2.StreamFirstResponseTimeoutSeconds
+	oldTimeoutFollowupAction := common2.TimeoutFollowupAction
+	oldRelayTimeout := common2.RelayTimeout
+	t.Cleanup(func() {
+		common2.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common2.TimeoutFollowupAction = oldTimeoutFollowupAction
+		common2.RelayTimeout = oldRelayTimeout
+		service.InitHttpClient()
+	})
+
+	common2.StreamFirstResponseTimeoutSeconds = 0.03
+	common2.TimeoutFollowupAction = common2.TimeoutFollowupActionRetry
+	common2.RelayTimeout = 0
+	service.InitHttpClient()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer server.Close()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+	require.NoError(t, err)
+	info := &relaycommon.RelayInfo{
+		IsStream:    true,
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{},
+	}
+
+	resp, err := DoRequest(ctx, req, info)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	require.Error(t, err)
+	require.Nil(t, resp)
+	require.True(t, info.TimeoutFollowupTriggered())
+}
+
+func TestDoRequest_TimeoutFollowupKeepsResponseBodyReadableAfterHeaders(t *testing.T) {
+	oldFirstResponseTimeout := common2.StreamFirstResponseTimeoutSeconds
+	oldTimeoutFollowupAction := common2.TimeoutFollowupAction
+	t.Cleanup(func() {
+		common2.StreamFirstResponseTimeoutSeconds = oldFirstResponseTimeout
+		common2.TimeoutFollowupAction = oldTimeoutFollowupAction
+	})
+
+	common2.StreamFirstResponseTimeoutSeconds = 1
+	common2.TimeoutFollowupAction = common2.TimeoutFollowupActionTransfer
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		time.Sleep(20 * time.Millisecond)
+		_, _ = w.Write([]byte("data: {\"ok\":true}\n\n"))
+	}))
+	defer server.Close()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req, err := http.NewRequest(http.MethodPost, server.URL, nil)
+	require.NoError(t, err)
+	info := &relaycommon.RelayInfo{
+		IsStream:    true,
+		RelayMode:   relayconstant.RelayModeChatCompletions,
+		ChannelMeta: &relaycommon.ChannelMeta{},
+	}
+
+	resp, err := DoRequest(ctx, req, info)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "data: {\"ok\":true}\n\n", string(body))
+	require.False(t, info.TimeoutFollowupTriggered())
 }

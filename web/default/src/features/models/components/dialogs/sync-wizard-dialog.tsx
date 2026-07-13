@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -59,8 +59,8 @@ export function SyncWizardDialog({
   const [isSyncing, setIsSyncing] = useState(false)
 
   // Get translated options
-  const SYNC_SOURCE_OPTIONS = getSyncSourceOptions(t)
-  const SYNC_LOCALE_OPTIONS = getSyncLocaleOptions(t)
+  const SYNC_SOURCE_OPTIONS = useMemo(() => getSyncSourceOptions(t), [t])
+  const SYNC_LOCALE_OPTIONS = useMemo(() => getSyncLocaleOptions(t), [t])
 
   useEffect(() => {
     if (open) {

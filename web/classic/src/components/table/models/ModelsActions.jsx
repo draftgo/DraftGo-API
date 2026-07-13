@@ -211,9 +211,7 @@ const ModelsActions = ({
         onConfirm={async ({ option, locale }) => {
           setSyncLocale(locale);
           setSyncSource(option);
-          if (option !== 'config') {
-            await handleSyncUpstream(locale, option);
-          }
+          await handleSyncUpstream(locale, option);
           setShowSyncModal(false);
         }}
       />

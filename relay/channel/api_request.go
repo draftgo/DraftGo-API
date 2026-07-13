@@ -25,6 +25,22 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var errStreamFirstResponseHeaderTimeout = errors.New("stream first response header timeout")
+
+type cancelOnCloseReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelCauseFunc
+	once   sync.Once
+}
+
+func (r *cancelOnCloseReadCloser) Close() error {
+	err := r.ReadCloser.Close()
+	r.once.Do(func() {
+		r.cancel(nil)
+	})
+	return err
+}
+
 // applyUpstreamContentLength populates req.ContentLength when the upstream
 // body is wrapped in a BodyStorage (see relay/common/outbound_body.go).
 //
@@ -516,7 +532,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		info.SetUpstreamStartTime(time.Now())
 	}
 	var firstResponseTimer *time.Timer
-	var firstResponseCancel context.CancelFunc
+	var firstResponseCancel context.CancelCauseFunc
 	if firstResponseTimeoutEnabled {
 		firstResponseTimeout := helper.StreamFirstResponseTimeoutDuration()
 		if firstResponseTimeout > 0 {
@@ -526,12 +542,12 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 						fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds))
 				})
 			} else {
-				requestCtx, firstResponseCancel = context.WithTimeout(requestCtx, firstResponseTimeout)
+				requestCtx, firstResponseCancel = context.WithCancelCause(requestCtx)
+				firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
+					firstResponseCancel(errStreamFirstResponseHeaderTimeout)
+				})
 			}
 		}
-	}
-	if firstResponseCancel != nil {
-		defer firstResponseCancel()
 	}
 	req = req.WithContext(requestCtx)
 
@@ -540,15 +556,29 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		firstResponseTimer.Stop()
 	}
 	if err != nil {
-		if firstResponseCancel != nil && errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
+		if firstResponseCancel != nil && errors.Is(context.Cause(requestCtx), errStreamFirstResponseHeaderTimeout) {
 			info.MarkTimeoutFollowupTriggered()
 			return nil, fmt.Errorf("stream first response timeout after %.2fs: %w", common2.StreamFirstResponseTimeoutSeconds, context.DeadlineExceeded)
+		}
+		if firstResponseCancel != nil {
+			firstResponseCancel(nil)
 		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
+		if firstResponseCancel != nil {
+			firstResponseCancel(nil)
+		}
 		return nil, errors.New("resp is nil")
+	}
+	if firstResponseCancel != nil {
+		if errors.Is(context.Cause(requestCtx), errStreamFirstResponseHeaderTimeout) {
+			_ = resp.Body.Close()
+			info.MarkTimeoutFollowupTriggered()
+			return nil, fmt.Errorf("stream first response timeout after %.2fs: %w", common2.StreamFirstResponseTimeoutSeconds, context.DeadlineExceeded)
+		}
+		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: firstResponseCancel}
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {

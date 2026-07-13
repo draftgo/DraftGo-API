@@ -47,11 +47,7 @@ const SyncWizardModal = ({ visible, onClose, onConfirm, loading, t }) => {
           )}
           <Button onClick={onClose}>{t('取消')}</Button>
           {step === 0 && (
-            <Button
-              type='primary'
-              onClick={() => setStep(1)}
-              disabled={option === 'config'}
-            >
+            <Button type='primary' onClick={() => setStep(1)}>
               {t('下一步')}
             </Button>
           )}
@@ -94,7 +90,7 @@ const SyncWizardModal = ({ visible, onClose, onConfirm, loading, t }) => {
             <Radio value='draftgo' extra={t('从 DraftGo 模型库同步')}>
               DraftGo
             </Radio>
-            <Radio value='config' extra={t('从配置文件同步')} disabled>
+            <Radio value='config' extra={t('从配置文件同步')}>
               {t('配置文件同步')}
             </Radio>
           </RadioGroup>
