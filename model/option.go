@@ -54,12 +54,6 @@ func InitOptionMap() {
 	common.OptionMap["TaskEnabled"] = strconv.FormatBool(common.TaskEnabled)
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
-	common.OptionMap["ChannelSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelSlowRequestThreshold, 'f', -1, 64)
-	common.OptionMap["ChannelNonStreamSlowRequestThreshold"] = strconv.FormatFloat(common.ChannelNonStreamSlowRequestThreshold, 'f', -1, 64)
-	common.OptionMap["StreamFirstResponseTimeoutSeconds"] = strconv.FormatFloat(common.StreamFirstResponseTimeoutSeconds, 'f', -1, 64)
-	common.OptionMap["TimeoutFollowupAction"] = common.TimeoutFollowupAction
-	common.OptionMap["ChannelDisableWindowMinutes"] = strconv.Itoa(common.ChannelDisableWindowMinutes)
-	common.OptionMap["ChannelDisableFailureThreshold"] = strconv.Itoa(common.ChannelDisableFailureThreshold)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
@@ -194,32 +188,10 @@ func InitOptionMap() {
 
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
-	hasLegacySlowRequestThreshold := false
-	hasNonStreamSlowRequestThreshold := false
-	legacySlowRequestThreshold := ""
-
 	for _, option := range options {
-		switch option.Key {
-		case "ChannelSlowRequestThreshold":
-			hasLegacySlowRequestThreshold = true
-			legacySlowRequestThreshold = option.Value
-		case "ChannelNonStreamSlowRequestThreshold":
-			hasNonStreamSlowRequestThreshold = true
-		}
-	}
-
-	for _, option := range options {
-		if option.Key == "SystemName" {
-			option.Value = common.NormalizeSystemName(option.Value)
-		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
-		}
-	}
-	if hasLegacySlowRequestThreshold {
-		if !hasNonStreamSlowRequestThreshold {
-			_ = updateOptionMap("ChannelNonStreamSlowRequestThreshold", legacySlowRequestThreshold)
 		}
 	}
 }
@@ -232,9 +204,16 @@ func SyncOptions(frequency int) {
 	}
 }
 
+func validateOptionValue(key string, value string) error {
+	if key == operation_setting.ToolPriceOptionKey {
+		return operation_setting.ValidateToolPricesJSON(value)
+	}
+	return nil
+}
+
 func UpdateOption(key string, value string) error {
-	if key == "SystemName" {
-		value = common.NormalizeSystemName(value)
+	if err := validateOptionValue(key, value); err != nil {
+		return err
 	}
 	// Save to database first
 	option := Option{
@@ -260,12 +239,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	for key, value := range values {
+		if err := validateOptionValue(key, value); err != nil {
+			return err
+		}
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
-			if k == "SystemName" {
-				v = common.NormalizeSystemName(v)
-				values[k] = v
-			}
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -289,8 +269,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
-	if key == "SystemName" {
-		value = common.NormalizeSystemName(value)
+	if key == retiredThemeOptionKey {
+		common.OptionMapRWMutex.Lock()
+		delete(common.OptionMap, key)
+		common.OptionMapRWMutex.Unlock()
+		return nil
 	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
@@ -521,7 +504,7 @@ func updateOptionMap(key string, value string) (err error) {
 	case "Footer":
 		common.Footer = value
 	case "SystemName":
-		common.SystemName = common.NormalizeSystemName(value)
+		common.SystemName = value
 	case "Logo":
 		common.Logo = value
 	case "WeChatServerAddress":
@@ -558,12 +541,6 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
-		if common.RetryTimes < 0 {
-			common.RetryTimes = 0
-		}
-		if common.RetryTimes > 20 {
-			common.RetryTimes = 20
-		}
 	case "DataExportInterval":
 		common.DataExportInterval, _ = strconv.Atoi(value)
 	case "DataExportDefaultTime":
@@ -598,23 +575,6 @@ func updateOptionMap(key string, value string) (err error) {
 	//	common.ChatLink2 = value
 	case "ChannelDisableThreshold":
 		common.ChannelDisableThreshold, _ = strconv.ParseFloat(value, 64)
-	case "ChannelSlowRequestThreshold":
-		common.ChannelSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
-	case "ChannelNonStreamSlowRequestThreshold":
-		common.ChannelNonStreamSlowRequestThreshold, _ = strconv.ParseFloat(value, 64)
-	case "StreamFirstResponseTimeoutSeconds":
-		common.StreamFirstResponseTimeoutSeconds, _ = strconv.ParseFloat(value, 64)
-	case "TimeoutFollowupAction":
-		switch value {
-		case common.TimeoutFollowupActionRetry, common.TimeoutFollowupActionTransfer:
-			common.TimeoutFollowupAction = value
-		default:
-			common.TimeoutFollowupAction = common.TimeoutFollowupActionNone
-		}
-	case "ChannelDisableWindowMinutes":
-		common.ChannelDisableWindowMinutes, _ = strconv.Atoi(value)
-	case "ChannelDisableFailureThreshold":
-		common.ChannelDisableFailureThreshold, _ = strconv.Atoi(value)
 	case "QuotaPerUnit":
 		common.QuotaPerUnit, _ = strconv.ParseFloat(value, 64)
 	case "SensitiveWords":
@@ -634,39 +594,16 @@ func updateOptionMap(key string, value string) (err error) {
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
 		// No additional in-memory variable to update.
 	}
-	if err == nil && shouldInvalidatePricingOption(key) {
-		InvalidatePricingCache()
-		ratio_setting.InvalidateExposedDataCache()
-	}
 	return err
-}
-
-func shouldInvalidatePricingOption(key string) bool {
-	switch key {
-	case "ModelPrice",
-		"ModelRatio",
-		"CompletionRatio",
-		"CacheRatio",
-		"CreateCacheRatio",
-		"ImageRatio",
-		"AudioRatio",
-		"AudioCompletionRatio",
-		"GroupRatio",
-		"GroupGroupRatio",
-		"UserUsableGroups",
-		"AutoGroups",
-		"DefaultUseAutoGroup",
-		"group_ratio_setting.group_special_usable_group",
-		"billing_setting.billing_mode",
-		"billing_setting.billing_expr":
-		return true
-	default:
-		return false
-	}
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
 func handleConfigUpdate(key, value string) bool {
+	if key == operation_setting.ToolPriceOptionKey {
+		operation_setting.LoadToolPricesFromJSONString(value)
+		return true
+	}
+
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
 		return false // 不是分层配置
@@ -690,16 +627,9 @@ func handleConfigUpdate(key, value string) bool {
 	// 特定配置的后处理
 	if configName == "performance_setting" {
 		performance_setting.UpdateAndSync()
-	} else if configName == "tool_price_setting" {
-		operation_setting.RebuildToolPriceIndex()
 	} else if configName == "billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
-	} else if configName == "group_ratio_setting" {
-		InvalidatePricingCache()
-		ratio_setting.InvalidateExposedDataCache()
-	} else if configName == "theme" {
-		system_setting.UpdateAndSyncTheme()
 	}
 
 	return true // 已处理

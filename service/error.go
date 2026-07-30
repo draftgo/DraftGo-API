@@ -12,20 +12,21 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
-func MidjourneyErrorWrapper(code int, desc string) *dto.MidjourneyResponse {
-	return &dto.MidjourneyResponse{
+func MidjourneyErrorWrapper(code int, desc string) *taskdto.MidjourneyResponse {
+	return &taskdto.MidjourneyResponse{
 		Code:        code,
 		Description: desc,
 	}
 }
 
-func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int) *dto.MidjourneyResponseWithStatusCode {
-	return &dto.MidjourneyResponseWithStatusCode{
+func MidjourneyErrorWithStatusCodeWrapper(code int, desc string, statusCode int) *taskdto.MidjourneyResponseWithStatusCode {
+	return &taskdto.MidjourneyResponseWithStatusCode{
 		StatusCode: statusCode,
 		Response:   *MidjourneyErrorWrapper(code, desc),
 	}
@@ -83,48 +84,6 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 	return claudeErr
 }
 
-// isUpstreamLeakyErrorResponse reports whether the upstream response looks like
-// an intermediary (CDN / WAF) error page that may leak the real upstream host,
-// origin IP, or Ray IDs. Typical case: Cloudflare 5xx HTML error pages.
-func isUpstreamLeakyErrorResponse(resp *http.Response, body []byte) bool {
-	if resp == nil {
-		return false
-	}
-	// 1) CF / similar intermediaries usually expose themselves via headers.
-	if resp.Header.Get("CF-Ray") != "" ||
-		resp.Header.Get("cf-ray") != "" ||
-		strings.Contains(strings.ToLower(resp.Header.Get("Server")), "cloudflare") {
-		// Only suppress when the body is NOT JSON. JSON error bodies are
-		// usually safe and useful for the client.
-		ct := strings.ToLower(resp.Header.Get("Content-Type"))
-		if !strings.Contains(ct, "application/json") && !strings.Contains(ct, "text/event-stream") {
-			return true
-		}
-	}
-	// 2) Content-Type says HTML -> almost certainly an error page from a proxy.
-	ct := strings.ToLower(resp.Header.Get("Content-Type"))
-	if strings.Contains(ct, "text/html") {
-		return true
-	}
-	// 3) Body sniff: bodies that look like Cloudflare / nginx error pages.
-	if len(body) > 0 {
-		head := body
-		if len(head) > 1024 {
-			head = head[:1024]
-		}
-		lower := strings.ToLower(string(head))
-		if strings.HasPrefix(lower, "<!doctype html") ||
-			strings.HasPrefix(lower, "<html") ||
-			strings.Contains(lower, "cloudflare") ||
-			strings.Contains(lower, "cf-ray") ||
-			strings.Contains(lower, "<title>504") ||
-			strings.Contains(lower, "<title>502") {
-			return true
-		}
-	}
-	return false
-}
-
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
@@ -133,16 +92,6 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		return
 	}
 	CloseResponseBodyGracefully(resp)
-
-	// Sanitize upstream non-JSON error pages (e.g. Cloudflare 5xx HTML pages)
-	// to avoid leaking upstream host / Ray ID / IP back to the client.
-	if isUpstreamLeakyErrorResponse(resp, responseBody) {
-		logger.LogError(ctx, fmt.Sprintf("upstream returned leaky error page, status=%d, ct=%s, body_len=%d (suppressed)",
-			resp.StatusCode, resp.Header.Get("Content-Type"), len(responseBody)))
-		newApiErr.Err = fmt.Errorf("upstream returned status %d", resp.StatusCode)
-		return
-	}
-
 	var errResponse dto.GeneralErrorResponse
 	responseBodyText := string(responseBody)
 	responseBodyPreview := common.LocalLogPreview(responseBodyText)
@@ -175,7 +124,13 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	message := errResponse.ToMessage()
+	if message == "" {
+		// The body parsed as JSON but carried no usable error message; log the
+		// raw body so the upstream failure remains diagnosable.
+		logger.LogError(ctx, fmt.Sprintf("bad response status code %d with empty error message, body: %s", resp.StatusCode, responseBodyPreview))
+	}
+	newApiErr = types.NewOpenAIError(errors.New(message), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	if showBodyWhenFail {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
@@ -236,21 +191,22 @@ func parseStatusCodeMappingValue(value any) (int, bool) {
 	}
 }
 
-func TaskErrorWrapperLocal(err error, code string, statusCode int) *dto.TaskError {
+func TaskErrorWrapperLocal(err error, code string, statusCode int) *taskdto.TaskError {
 	openaiErr := TaskErrorWrapper(err, code, statusCode)
 	openaiErr.LocalError = true
 	return openaiErr
 }
 
-func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
+func TaskErrorWrapper(err error, code string, statusCode int) *taskdto.TaskError {
 	text := err.Error()
 	lowerText := strings.ToLower(text)
 	if strings.Contains(lowerText, "post") || strings.Contains(lowerText, "dial") || strings.Contains(lowerText, "http") {
 		common.SysLog(fmt.Sprintf("error: %s", text))
+		//text = "请求上游地址失败"
+		text = common.MaskSensitiveInfo(text)
 	}
-	text = common.SanitizeUpstreamError(text)
 	//避免暴露内部错误
-	taskError := &dto.TaskError{
+	taskError := &taskdto.TaskError{
 		Code:       code,
 		Message:    text,
 		StatusCode: statusCode,
@@ -261,23 +217,19 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 }
 
 // TaskErrorFromAPIError 将 PreConsumeBilling 返回的 NewAPIError 转换为 TaskError。
-func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
+func TaskErrorFromAPIError(apiErr *types.NewAPIError) *taskdto.TaskError {
 	if apiErr == nil {
 		return nil
 	}
-	message := common.SanitizeUpstreamError(apiErr.Err.Error())
-	if apiErr.IsUpstreamError() {
-		message = common.SanitizeUpstreamErrorStrict(apiErr.Err.Error())
-	}
-	return &dto.TaskError{
+	return &taskdto.TaskError{
 		Code:       string(apiErr.GetErrorCode()),
-		Message:    message,
+		Message:    apiErr.Err.Error(),
 		StatusCode: apiErr.StatusCode,
 		Error:      apiErr.Err,
 	}
 }
 
-func SanitizeTaskError(taskErr *dto.TaskError) {
+func SanitizeTaskError(taskErr *taskdto.TaskError) {
 	if taskErr == nil {
 		return
 	}

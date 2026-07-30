@@ -6,10 +6,9 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -126,45 +125,6 @@ func PingData(c *gin.Context) error {
 func ObjectData(c *gin.Context, object interface{}) error {
 	if object == nil {
 		return errors.New("object is nil")
-	}
-	if relayInfoAny, ok := c.Get("relay_info"); ok {
-		if info, ok := relayInfoAny.(*relaycommon.RelayInfo); ok {
-			switch resp := object.(type) {
-			case *dto.ChatCompletionsStreamResponse:
-				RewriteChatCompletionStreamModelForClient(info, resp)
-			case dto.ChatCompletionsStreamResponse:
-				RewriteChatCompletionStreamModelForClient(info, &resp)
-				object = resp
-			case *dto.OpenAIResponsesResponse:
-				RewriteResponsesModelForClient(info, resp)
-			case dto.OpenAIResponsesResponse:
-				RewriteResponsesModelForClient(info, &resp)
-				object = resp
-			case *dto.ResponsesStreamResponse:
-				RewriteResponsesStreamModelForClient(info, resp)
-			case dto.ResponsesStreamResponse:
-				RewriteResponsesStreamModelForClient(info, &resp)
-				object = resp
-			case *dto.OpenAITextResponse:
-				if HasInternalModelMapping(info) {
-					resp.Model = ClientVisibleModelName(info, resp.Model)
-				}
-			case dto.OpenAITextResponse:
-				if HasInternalModelMapping(info) {
-					resp.Model = ClientVisibleModelName(info, resp.Model)
-				}
-				object = resp
-			case *dto.OpenAIEmbeddingResponse:
-				if HasInternalModelMapping(info) {
-					resp.Model = ClientVisibleModelName(info, resp.Model)
-				}
-			case dto.OpenAIEmbeddingResponse:
-				if HasInternalModelMapping(info) {
-					resp.Model = ClientVisibleModelName(info, resp.Model)
-				}
-				object = resp
-			}
-		}
 	}
 	jsonData, err := common.Marshal(object)
 	if err != nil {

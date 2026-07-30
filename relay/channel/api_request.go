@@ -16,30 +16,14 @@ import (
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
-
-var errStreamFirstResponseHeaderTimeout = errors.New("stream first response header timeout")
-
-type cancelOnCloseReadCloser struct {
-	io.ReadCloser
-	cancel context.CancelCauseFunc
-	once   sync.Once
-}
-
-func (r *cancelOnCloseReadCloser) Close() error {
-	err := r.ReadCloser.Close()
-	r.once.Do(func() {
-		r.cancel(nil)
-	})
-	return err
-}
 
 // applyUpstreamContentLength populates req.ContentLength when the upstream
 // body is wrapped in a BodyStorage (see relay/common/outbound_body.go).
@@ -491,15 +475,19 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
-	var client *http.Client
-	var err error
-	if info.ChannelSetting.Proxy != "" {
-		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
-		if err != nil {
-			return nil, fmt.Errorf("new proxy http client failed: %w", err)
-		}
-	} else {
-		client = service.GetHttpClient()
+	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	if common2.DebugEnabled && req != nil && req.URL != nil {
+		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
+		logger.LogDebug(c, fmt.Sprintf(
+			"http transport select: host=%s protocol=%s shards=%d policy=%s",
+			req.URL.Host,
+			policy.Protocol,
+			policy.Shards,
+			policy.String(),
+		))
 	}
 
 	var stopPinger context.CancelFunc
@@ -522,75 +510,32 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
-	requestCtx := req.Context()
-	if requestCtx == context.Background() {
-		requestCtx = c.Request.Context()
-	}
-
-	firstResponseTimeoutEnabled := helper.StreamFirstResponseTimeoutEnabled(info)
-	if info != nil {
-		info.SetUpstreamStartTime(time.Now())
-	}
-	var firstResponseTimer *time.Timer
-	var firstResponseCancel context.CancelCauseFunc
-	if firstResponseTimeoutEnabled {
-		firstResponseTimeout := helper.StreamFirstResponseTimeoutDuration()
-		if firstResponseTimeout > 0 {
-			if common2.TimeoutFollowupAction == common2.TimeoutFollowupActionNone {
-				firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
-					helper.RecordStreamFirstResponseTimeoutFailure(c, info,
-						fmt.Errorf("stream first response timeout after %.2fs", common2.StreamFirstResponseTimeoutSeconds))
-				})
-			} else {
-				requestCtx, firstResponseCancel = context.WithCancelCause(requestCtx)
-				firstResponseTimer = time.AfterFunc(firstResponseTimeout, func() {
-					firstResponseCancel(errStreamFirstResponseHeaderTimeout)
-				})
-			}
-		}
-	}
-	req = req.WithContext(requestCtx)
-
 	resp, err := client.Do(req)
-	if firstResponseTimer != nil {
-		firstResponseTimer.Stop()
-	}
 	if err != nil {
-		if firstResponseCancel != nil && errors.Is(context.Cause(requestCtx), errStreamFirstResponseHeaderTimeout) {
-			info.MarkTimeoutFollowupTriggered()
-			return nil, fmt.Errorf("stream first response timeout after %.2fs: %w", common2.StreamFirstResponseTimeoutSeconds, context.DeadlineExceeded)
-		}
-		if firstResponseCancel != nil {
-			firstResponseCancel(nil)
-		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
 	if resp == nil {
-		if firstResponseCancel != nil {
-			firstResponseCancel(nil)
-		}
 		return nil, errors.New("resp is nil")
 	}
-	if firstResponseCancel != nil {
-		if errors.Is(context.Cause(requestCtx), errStreamFirstResponseHeaderTimeout) {
-			_ = resp.Body.Close()
-			info.MarkTimeoutFollowupTriggered()
-			return nil, fmt.Errorf("stream first response timeout after %.2fs: %w", common2.StreamFirstResponseTimeoutSeconds, context.DeadlineExceeded)
-		}
-		resp.Body = &cancelOnCloseReadCloser{ReadCloser: resp.Body, cancel: firstResponseCancel}
+	if common2.DebugEnabled {
+		policy := service.NormalizeHTTPTransportPolicy(info.ChannelSetting)
+		logger.LogDebug(c, fmt.Sprintf(
+			"http transport negotiated: host=%s protocol=%s shards=%d policy=%s negotiated=%s",
+			req.URL.Host,
+			policy.Protocol,
+			policy.Shards,
+			policy.String(),
+			resp.Proto,
+		))
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
 	}
 
-	if req.Body != nil {
-		_ = req.Body.Close()
-	}
-	if c.Request != nil && c.Request.Body != nil {
-		_ = c.Request.Body.Close()
-	}
+	_ = req.Body.Close()
+	_ = c.Request.Body.Close()
 	return resp, nil
 }
 

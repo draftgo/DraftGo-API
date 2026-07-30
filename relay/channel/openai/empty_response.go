@@ -6,8 +6,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 func newEmptyResponseError() *types.NewAPIError {
@@ -94,9 +94,6 @@ func chatStreamDataHasOutput(data string) bool {
 func responsesResponseHasOutput(resp *dto.OpenAIResponsesResponse) bool {
 	if resp == nil {
 		return false
-	}
-	if resp.HasImageGenerationCall() {
-		return true
 	}
 	for _, output := range resp.Output {
 		switch output.Type {

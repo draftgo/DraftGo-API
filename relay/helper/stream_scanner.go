@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -397,7 +398,7 @@ func RecordStreamFirstResponseTimeoutFailure(c *gin.Context, info *relaycommon.R
 	if channelName == "" {
 		channelName = fmt.Sprintf("#%d", info.ChannelMeta.ChannelId)
 	}
-	channelError := types.NewChannelError(
+	channelError := relaytypes.NewChannelError(
 		info.ChannelMeta.ChannelId,
 		info.ChannelMeta.ChannelType,
 		channelName,
@@ -409,7 +410,7 @@ func RecordStreamFirstResponseTimeoutFailure(c *gin.Context, info *relaycommon.R
 		return
 	}
 
-	timeoutErr := types.NewOpenAIError(err, types.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
+	timeoutErr := relaytypes.NewOpenAIError(err, relaytypes.ErrorCodeChannelStreamFirstResponseTimeout, http.StatusServiceUnavailable)
 	if !service.ShouldDisableChannel(timeoutErr) {
 		return
 	}

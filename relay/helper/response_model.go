@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
 func RewriteOpenAIResponseModelForClient(info *relaycommon.RelayInfo, body []byte) []byte {
