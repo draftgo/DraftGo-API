@@ -318,6 +318,7 @@ export function ModelMutateDrawer({
       GroupRatio: '',
       UserUsableGroups: '',
       GroupGroupRatio: '',
+      GroupFallbackModels: '{}',
       AutoGroups: '',
       DefaultUseAutoGroup: false,
       CreateCacheRatio: '',

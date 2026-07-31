@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,45 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+func normalizeTokenFallbackModels(token *model.Token) error {
+	if token == nil {
+		return fmt.Errorf("token is nil")
+	}
+	raw := strings.TrimSpace(token.FallbackModels)
+	if raw == "" {
+		raw = "[]"
+	}
+	models := make([]string, 0)
+	if err := common.Unmarshal([]byte(raw), &models); err != nil {
+		return fmt.Errorf("invalid fallback models: %w", err)
+	}
+	if len(models) > setting.MaxFallbackModels {
+		return fmt.Errorf("at most %d fallback models are allowed", setting.MaxFallbackModels)
+	}
+	seen := make(map[string]struct{}, len(models))
+	normalized := make([]string, 0, len(models))
+	for _, modelName := range models {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
+			return fmt.Errorf("fallback model name cannot be empty")
+		}
+		if len(modelName) > 128 {
+			return fmt.Errorf("fallback model name is too long")
+		}
+		if _, exists := seen[modelName]; exists {
+			return fmt.Errorf("duplicate fallback model: %s", modelName)
+		}
+		seen[modelName] = struct{}{}
+		normalized = append(normalized, modelName)
+	}
+	jsonBytes, err := common.Marshal(normalized)
+	if err != nil {
+		return err
+	}
+	token.FallbackModels = string(jsonBytes)
+	return nil
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -175,6 +215,10 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if err := normalizeTokenFallbackModels(&token); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -208,19 +252,21 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
-		Name:               token.Name,
-		Key:                key,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        token.ExpiredTime,
-		RemainQuota:        token.RemainQuota,
-		UnlimitedQuota:     token.UnlimitedQuota,
-		ModelLimitsEnabled: token.ModelLimitsEnabled,
-		ModelLimits:        token.ModelLimits,
-		AllowIps:           token.AllowIps,
-		Group:              token.Group,
-		CrossGroupRetry:    token.CrossGroupRetry,
+		UserId:               c.GetInt("id"),
+		Name:                 token.Name,
+		Key:                  key,
+		CreatedTime:          common.GetTimestamp(),
+		AccessedTime:         common.GetTimestamp(),
+		ExpiredTime:          token.ExpiredTime,
+		RemainQuota:          token.RemainQuota,
+		UnlimitedQuota:       token.UnlimitedQuota,
+		ModelLimitsEnabled:   token.ModelLimitsEnabled,
+		ModelLimits:          token.ModelLimits,
+		AllowIps:             token.AllowIps,
+		Group:                token.Group,
+		CrossGroupRetry:      token.CrossGroupRetry,
+		FallbackModelEnabled: token.FallbackModelEnabled,
+		FallbackModels:       token.FallbackModels,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -259,6 +305,12 @@ func UpdateToken(c *gin.Context) {
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
+	}
+	if statusOnly == "" {
+		if err := normalizeTokenFallbackModels(&token); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
@@ -299,6 +351,8 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.FallbackModelEnabled = token.FallbackModelEnabled
+		cleanToken.FallbackModels = token.FallbackModels
 	}
 	err = cleanToken.Update()
 	if err != nil {

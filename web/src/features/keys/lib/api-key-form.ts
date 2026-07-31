@@ -39,6 +39,10 @@ export function getApiKeyFormSchema(t: TFunction) {
       allow_ips: z.string().optional(),
       group: z.string().optional(),
       cross_group_retry: z.boolean().optional(),
+      fallback_model_enabled: z.boolean(),
+      fallback_models: z
+        .array(z.string())
+        .max(16, t('You can select up to 16 fallback models')),
       tokenCount: z.number().min(1).optional(),
     })
     .superRefine((data, ctx) => {
@@ -74,6 +78,8 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   allow_ips: '',
   group: DEFAULT_GROUP,
   cross_group_retry: true,
+  fallback_model_enabled: false,
+  fallback_models: [],
   tokenCount: 1,
 }
 
@@ -111,6 +117,8 @@ export function transformFormDataToPayload(
     allow_ips: data.allow_ips || '',
     group: data.group || '',
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    fallback_model_enabled: data.fallback_model_enabled,
+    fallback_models: JSON.stringify(data.fallback_models),
   }
 }
 
@@ -136,6 +144,19 @@ export function transformApiKeyToFormDefaults(
     allow_ips: apiKey.allow_ips || '',
     group: apiKey.group || DEFAULT_GROUP,
     cross_group_retry: !!apiKey.cross_group_retry,
+    fallback_model_enabled: !!apiKey.fallback_model_enabled,
+    fallback_models: parseFallbackModels(apiKey.fallback_models),
     tokenCount: 1,
+  }
+}
+
+function parseFallbackModels(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value || '[]')
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : []
+  } catch {
+    return []
   }
 }

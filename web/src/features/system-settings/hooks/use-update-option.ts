@@ -52,6 +52,7 @@ const PRICING_RELATED_KEYS = [
   'TopupGroupRatio',
   'UserUsableGroups',
   'GroupGroupRatio',
+  'GroupFallbackModels',
   'AutoGroups',
   'DefaultUseAutoGroup',
   'group_ratio_setting.group_special_usable_group',

@@ -141,19 +141,25 @@ func Distribute() func(c *gin.Context) {
 						Retry:       common.GetPointer(0),
 					})
 					if err != nil {
-						common.SysLog(fmt.Sprintf("get channel failed for model %s in group %s: %v", modelRequest.Model, selectGroup, err))
-						message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Model": modelRequest.Model, "Error": err.Error()})
-						// 如果错误，但是渠道不为空，说明是数据库一致性问题
-						//if channel != nil {
-						//	common.SysError(fmt.Sprintf("渠道不存在：%d", channel.Id))
-						//	message = "数据库一致性已被破坏，请联系管理员"
-						//}
-						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
-						return
+						if common.GetContextKeyBool(c, constant.ContextKeyTokenFallbackModelEnabled) && channel == nil {
+							c.Set("defer_initial_channel_selection", true)
+						} else {
+							common.SysLog(fmt.Sprintf("get channel failed for model %s in group %s: %v", modelRequest.Model, selectGroup, err))
+							message := i18n.T(c, i18n.MsgDistributorGetChannelFailed, map[string]any{"Model": modelRequest.Model, "Error": err.Error()})
+							// 如果错误，但是渠道不为空，说明是数据库一致性问题
+							//if channel != nil {
+							//	common.SysError(fmt.Sprintf("渠道不存在：%d", channel.Id))
+							//	message = "数据库一致性已被破坏，请联系管理员"
+							//}
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, message, types.ErrorCodeModelNotFound)
+							return
+						}
 					}
-					if channel == nil {
+					if channel == nil && !common.GetContextKeyBool(c, constant.ContextKeyTokenFallbackModelEnabled) {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
+					} else if channel == nil {
+						c.Set("defer_initial_channel_selection", true)
 					}
 				}
 			}

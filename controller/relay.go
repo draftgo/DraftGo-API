@@ -25,6 +25,8 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -145,31 +147,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
-	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
-		return
-	}
-
-	relayInfo.SetEstimatePromptTokens(tokens)
-
-	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
-	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
-		return
-	}
-
-	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
-
-	if priceData.FreeModel {
-		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
-	} else {
-		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
-		if newAPIError != nil {
-			return
-		}
-	}
-
 	defer func() {
 		// Only return quota if downstream failed and quota was actually pre-consumed
 		if newAPIError != nil {
@@ -181,62 +158,68 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}()
 
-	retryParam := &service.RetryParam{
-		Ctx:         c,
-		TokenGroup:  relayInfo.TokenGroup,
-		ModelName:   relayInfo.OriginModelName,
-		RequestPath: c.Request.URL.Path,
-		Retry:       common.GetPointer(0),
-	}
-	relayInfo.RetryIndex = 0
-	relayInfo.LastError = nil
+	modelCandidates := relayModelCandidates(c, relayInfo, relayFormat)
+	attemptedModels := make([]string, 0, len(modelCandidates))
+	for candidateIndex, candidateModel := range modelCandidates {
+		prepareRelayModelCandidate(c, relayInfo, candidateModel, candidateIndex)
+		attemptedModels = append(attemptedModels, candidateModel)
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
-		relayInfo.RetryIndex = retryParam.GetRetry()
+		retryParam := &service.RetryParam{
+			Ctx:         c,
+			TokenGroup:  relayInfo.TokenGroup,
+			ModelName:   candidateModel,
+			RequestPath: c.Request.URL.Path,
+			Retry:       common.GetPointer(0),
+		}
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
 			newAPIError = channelErr
-			break
-		}
-
-		addUsedChannel(c, channel.Id)
-		bodyStorage, bodyErr := common.GetBodyStorage(c)
-		if bodyErr != nil {
-			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
-			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+		} else {
+			tokens, countErr := service.EstimateRequestToken(c, meta, relayInfo)
+			if countErr != nil {
+				newAPIError = types.NewError(countErr, types.ErrorCodeCountTokenFailed)
 			} else {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+				relayInfo.SetEstimatePromptTokens(tokens)
+				priceData, priceErr := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+				if priceErr != nil {
+					newAPIError = types.NewError(priceErr, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+				} else {
+					if priceData.FreeModel {
+						logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
+					} else {
+						newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+					}
+					if newAPIError == nil {
+						newAPIError = relayModelThroughChannels(c, relayFormat, relayInfo, retryParam, channel)
+					}
+				}
 			}
-			break
-		}
-		c.Request.Body = io.NopCloser(bodyStorage)
-
-		switch relayFormat {
-		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
-		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
-		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
-		default:
-			newAPIError = relayHandler(c, relayInfo)
 		}
 
 		if newAPIError == nil {
-			relayInfo.LastError = nil
 			return
 		}
-
-		newAPIError = service.NormalizeViolationFeeError(newAPIError)
-		relayInfo.LastError = newAPIError
-
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		if candidateIndex == len(modelCandidates)-1 || !shouldTryFallbackModel(c, relayInfo, newAPIError, candidateIndex > 0) {
 			break
 		}
+		if relayInfo.Billing != nil {
+			if refundErr := relayInfo.Billing.RefundSync(c); refundErr != nil {
+				newAPIError = types.NewError(refundErr, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+				break
+			}
+			relayInfo.Billing = nil
+		}
+		logger.LogInfo(c, fmt.Sprintf("model fallback: %s -> %s", candidateModel, modelCandidates[candidateIndex+1]))
+	}
+
+	if newAPIError != nil && len(attemptedModels) > 1 {
+		newAPIError = types.NewErrorWithStatusCode(
+			fmt.Errorf("models unavailable after trying %s: %w", strings.Join(attemptedModels, " -> "), newAPIError),
+			types.ErrorCodeModelNotFound,
+			http.StatusServiceUnavailable,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 
 	useChannel := c.GetStringSlice("use_channel")
@@ -262,6 +245,167 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+func relayModelCandidates(c *gin.Context, info *relaycommon.RelayInfo, relayFormat types.RelayFormat) []string {
+	candidates := []string{info.OriginModelName}
+	if !common.GetContextKeyBool(c, constant.ContextKeyTokenFallbackModelEnabled) || relayFormat == types.RelayFormatOpenAIRealtime {
+		return candidates
+	}
+	if _, specificChannel := c.Get("specific_channel_id"); specificChannel {
+		return candidates
+	}
+
+	fallbackModels, _ := common.GetContextKeyType[[]string](c, constant.ContextKeyTokenFallbackModels)
+	if len(fallbackModels) == 0 {
+		groups := []string{info.TokenGroup}
+		if info.TokenGroup == "auto" {
+			groups = service.GetUserAutoGroup(info.UserGroup)
+		}
+		fallbackModels = make([]string, 0)
+		for _, group := range groups {
+			fallbackModels = append(fallbackModels, setting.GetGroupFallbackModels(group)...)
+		}
+	}
+
+	seen := map[string]struct{}{info.OriginModelName: {}}
+	modelLimitEnabled := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	modelLimit := map[string]bool{}
+	if rawLimit, ok := common.GetContextKey(c, constant.ContextKeyTokenModelLimit); ok {
+		if typedLimit, ok := rawLimit.(map[string]bool); ok {
+			modelLimit = typedLimit
+		}
+	}
+	for _, modelName := range fallbackModels {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
+			continue
+		}
+		if modelLimitEnabled {
+			matchName := ratio_setting.FormatMatchingModelName(modelName)
+			if !modelLimit[modelName] && !modelLimit[matchName] {
+				continue
+			}
+		}
+		if _, exists := seen[modelName]; exists {
+			continue
+		}
+		seen[modelName] = struct{}{}
+		candidates = append(candidates, modelName)
+		if len(candidates) > setting.MaxFallbackModels {
+			break
+		}
+	}
+	return candidates
+}
+
+func prepareRelayModelCandidate(c *gin.Context, info *relaycommon.RelayInfo, modelName string, candidateIndex int) {
+	info.OriginModelName = modelName
+	if info.ChannelMeta != nil {
+		info.UpstreamModelName = modelName
+		info.IsModelMapped = false
+	}
+	info.UsingGroup = info.TokenGroup
+	info.RetryIndex = 0
+	info.LastError = nil
+	info.BillingAttempt = candidateIndex
+	info.BillingSource = ""
+	info.QuotaClamp = nil
+	info.TieredBillingSnapshot = nil
+	info.BillingRequestInput = nil
+	info.PriceData = hosttypes.PriceData{}
+	info.FinalPreConsumedQuota = 0
+	info.SubscriptionId = 0
+	info.SubscriptionPreConsumed = 0
+	info.SubscriptionPostDelta = 0
+	info.SubscriptionPlanId = 0
+	info.SubscriptionPlanTitle = ""
+	info.SubscriptionAmountTotal = 0
+	info.SubscriptionAmountUsedAfterPreConsume = 0
+	info.ReceivedResponseCount = 0
+	info.ResetTimeoutAttemptState()
+	if info.Request != nil {
+		info.Request.SetModelName(modelName)
+	}
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, modelName)
+	common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, 0)
+	common.SetContextKey(c, constant.ContextKeyAutoGroupRetryIndex, 0)
+	c.Set("fallback_model_index", candidateIndex)
+}
+
+func relayModelThroughChannels(c *gin.Context, relayFormat types.RelayFormat, info *relaycommon.RelayInfo, retryParam *service.RetryParam, channel *model.Channel) *types.NewAPIError {
+	for retryParam.GetRetry() <= common.RetryTimes {
+		info.RetryIndex = retryParam.GetRetry()
+		addUsedChannel(c, channel.Id)
+		bodyStorage, bodyErr := common.GetBodyStorage(c)
+		if bodyErr != nil {
+			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
+				return types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+			}
+			return types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		c.Request.Body = io.NopCloser(bodyStorage)
+
+		var relayErr *types.NewAPIError
+		switch relayFormat {
+		case types.RelayFormatOpenAIRealtime:
+			relayErr = relay.WssHelper(c, info)
+		case types.RelayFormatClaude:
+			relayErr = relay.ClaudeHelper(c, info)
+		case types.RelayFormatGemini:
+			relayErr = geminiRelayHandler(c, info)
+		default:
+			relayErr = relayHandler(c, info)
+		}
+		if relayErr == nil {
+			info.LastError = nil
+			return nil
+		}
+
+		relayErr = service.NormalizeViolationFeeError(relayErr)
+		info.LastError = relayErr
+		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), relayErr)
+		if !shouldRetry(c, relayErr, common.RetryTimes-retryParam.GetRetry()) {
+			return relayErr
+		}
+
+		retryParam.IncreaseRetry()
+		if retryParam.GetRetry() > common.RetryTimes {
+			return relayErr
+		}
+		nextChannel, channelErr := getChannel(c, info, retryParam)
+		if channelErr != nil {
+			logger.LogError(c, channelErr.Error())
+			return channelErr
+		}
+		channel = nextChannel
+	}
+	return info.LastError
+}
+
+func shouldTryFallbackModel(c *gin.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError, currentIsFallback bool) bool {
+	if apiErr == nil || info.SendResponseCount > 0 || info.HasSendResponse() || c.Writer.Written() {
+		return false
+	}
+	if code := apiErr.GetErrorCode(); code == types.ErrorCodeGetChannelFailed || code == types.ErrorCodeModelNotFound {
+		return true
+	} else if currentIsFallback && (code == types.ErrorCodeModelPriceError || code == types.ErrorCodeCountTokenFailed) {
+		return true
+	}
+	if types.IsChannelError(apiErr) {
+		return true
+	}
+	if types.IsSkipRetryError(apiErr) {
+		return false
+	}
+	statusCode := apiErr.StatusCode
+	if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests || statusCode >= http.StatusInternalServerError {
+		return true
+	}
+	if operation_setting.IsAlwaysSkipRetryCode(apiErr.GetErrorCode()) {
+		return false
+	}
+	return operation_setting.ShouldRetryByStatusCode(statusCode)
 }
 
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
@@ -294,7 +438,7 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 }
 
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
-	if info.ChannelMeta == nil {
+	if info.ChannelMeta == nil && !c.GetBool("defer_initial_channel_selection") {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
 		if !autoBan {
@@ -387,6 +531,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["channel_type"] = c.GetInt("channel_type")
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+		if fallbackIndex := c.GetInt("fallback_model_index"); fallbackIndex > 0 {
+			adminInfo["fallback_model_index"] = fallbackIndex
+			adminInfo["fallback_model"] = modelName
+		}
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
 			adminInfo["is_multi_key"] = true

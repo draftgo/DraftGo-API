@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -78,12 +80,21 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	return tokenErr
 }
 
-// Refund 退还所有预扣费，幂等安全，异步执行。
-func (s *BillingSession) Refund(c *gin.Context) {
+type billingRefund struct {
+	funding        FundingSource
+	tokenId        int
+	tokenKey       string
+	isPlayground   bool
+	tokenConsumed  int
+	extraReserved  int
+	subscriptionId int
+}
+
+func (s *BillingSession) prepareRefund(c *gin.Context) *billingRefund {
 	s.mu.Lock()
 	if s.settled || s.refunded || !s.needsRefundLocked() {
 		s.mu.Unlock()
-		return
+		return nil
 	}
 	s.refunded = true
 	s.mu.Unlock()
@@ -94,32 +105,53 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		s.funding.Source(),
 	))
 
-	// 复制需要的值到闭包中
-	tokenId := s.relayInfo.TokenId
-	tokenKey := s.relayInfo.TokenKey
-	isPlayground := s.relayInfo.IsPlayground
-	tokenConsumed := s.tokenConsumed
-	extraReserved := s.extraReserved
-	subscriptionId := s.relayInfo.SubscriptionId
-	funding := s.funding
+	return &billingRefund{
+		funding:        s.funding,
+		tokenId:        s.relayInfo.TokenId,
+		tokenKey:       s.relayInfo.TokenKey,
+		isPlayground:   s.relayInfo.IsPlayground,
+		tokenConsumed:  s.tokenConsumed,
+		extraReserved:  s.extraReserved,
+		subscriptionId: s.relayInfo.SubscriptionId,
+	}
+}
 
+func (r *billingRefund) run() error {
+	if r == nil {
+		return nil
+	}
+	refundErrors := make([]error, 0, 3)
+	if err := r.funding.Refund(); err != nil {
+		refundErrors = append(refundErrors, fmt.Errorf("refund billing source: %w", err))
+	}
+	if r.extraReserved > 0 && r.funding.Source() == BillingSourceSubscription && r.subscriptionId > 0 {
+		if err := model.PostConsumeUserSubscriptionDelta(r.subscriptionId, -int64(r.extraReserved)); err != nil {
+			refundErrors = append(refundErrors, fmt.Errorf("refund subscription reserve: %w", err))
+		}
+	}
+	if r.tokenConsumed > 0 && !r.isPlayground {
+		if err := model.IncreaseTokenQuota(r.tokenId, r.tokenKey, r.tokenConsumed); err != nil {
+			refundErrors = append(refundErrors, fmt.Errorf("refund token quota: %w", err))
+		}
+	}
+	return errors.Join(refundErrors...)
+}
+
+// Refund 退还所有预扣费，幂等安全，异步执行。
+func (s *BillingSession) Refund(c *gin.Context) {
+	refund := s.prepareRefund(c)
+	if refund == nil {
+		return
+	}
 	gopool.Go(func() {
-		// 1) 退还资金来源
-		if err := funding.Refund(); err != nil {
-			common.SysLog("error refunding billing source: " + err.Error())
-		}
-		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
-				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
-			}
-		}
-		// 2) 退还令牌额度
-		if tokenConsumed > 0 && !isPlayground {
-			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
-				common.SysLog("error refunding token quota: " + err.Error())
-			}
+		if err := refund.run(); err != nil {
+			common.SysLog("error refunding billing session: " + err.Error())
 		}
 	})
+}
+
+func (s *BillingSession) RefundSync(c *gin.Context) error {
+	return s.prepareRefund(c).run()
 }
 
 // NeedsRefund 返回是否存在需要退还的预扣状态。
@@ -381,10 +413,15 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 {
 			subConsume = 1
 		}
+		subscriptionRequestId := relayInfo.RequestId
+		if relayInfo.BillingAttempt > 0 {
+			hashInput := fmt.Sprintf("%s:%d", relayInfo.RequestId, relayInfo.BillingAttempt)
+			subscriptionRequestId = fmt.Sprintf("%x", sha256.Sum256([]byte(hashInput)))
+		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
+				requestId: subscriptionRequestId,
 				userId:    relayInfo.UserId,
 				modelName: relayInfo.OriginModelName,
 				amount:    subConsume,

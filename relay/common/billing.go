@@ -13,6 +13,10 @@ type BillingSettler interface {
 	// 通过 gopool 异步执行。如果已经结算或退款则不做任何操作。
 	Refund(c *gin.Context)
 
+	// RefundSync 在切换到另一个模型前同步退还预扣费。
+	// 只有退款成功后，调用方才能安全地开始下一次预扣费。
+	RefundSync(c *gin.Context) error
+
 	// NeedsRefund 返回会话是否存在需要退还的预扣状态（未结算且未退款）。
 	NeedsRefund() bool
 

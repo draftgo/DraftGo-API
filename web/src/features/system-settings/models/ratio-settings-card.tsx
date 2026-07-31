@@ -127,6 +127,27 @@ const createGroupSchema = (t: Translate) =>
     TopupGroupRatio: createJsonStringField(t),
     UserUsableGroups: createJsonStringField(t),
     GroupGroupRatio: createJsonStringField(t),
+    GroupFallbackModels: createJsonStringField(t, {
+      predicate: (parsed) =>
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed) &&
+        Object.entries(parsed).every(
+          ([group, models]) =>
+            group.trim().length > 0 &&
+            Array.isArray(models) &&
+            models.length <= 16 &&
+            models.every(
+              (model) =>
+                typeof model === 'string' &&
+                model.trim().length > 0 &&
+                model.length <= 128
+            ) &&
+            new Set(models).size === models.length
+        ),
+      predicateMessage:
+        'Expected a JSON map of group names to unique ordered model arrays',
+    }),
     AutoGroups: createJsonStringField(t, {
       predicate: (parsed) =>
         Array.isArray(parsed) &&
@@ -207,6 +228,9 @@ export function RatioSettingsCard({
     TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
     UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
     GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
+    GroupFallbackModels: normalizeJsonString(
+      groupDefaults.GroupFallbackModels
+    ),
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
     DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
     GroupSpecialUsableGroup: normalizeJsonString(
@@ -245,6 +269,9 @@ export function RatioSettingsCard({
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
+      GroupFallbackModels: formatJsonForTextarea(
+        groupDefaults.GroupFallbackModels
+      ),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
@@ -293,6 +320,9 @@ export function RatioSettingsCard({
       TopupGroupRatio: normalizeJsonString(groupDefaults.TopupGroupRatio),
       UserUsableGroups: normalizeJsonString(groupDefaults.UserUsableGroups),
       GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
+      GroupFallbackModels: normalizeJsonString(
+        groupDefaults.GroupFallbackModels
+      ),
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
       DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
       GroupSpecialUsableGroup: normalizeJsonString(
@@ -306,6 +336,9 @@ export function RatioSettingsCard({
       TopupGroupRatio: formatJsonForTextarea(groupDefaults.TopupGroupRatio),
       UserUsableGroups: formatJsonForTextarea(groupDefaults.UserUsableGroups),
       GroupGroupRatio: formatJsonForTextarea(groupDefaults.GroupGroupRatio),
+      GroupFallbackModels: formatJsonForTextarea(
+        groupDefaults.GroupFallbackModels
+      ),
       AutoGroups: formatJsonForTextarea(groupDefaults.AutoGroups),
       GroupSpecialUsableGroup: formatJsonForTextarea(
         groupDefaults.GroupSpecialUsableGroup
@@ -363,6 +396,7 @@ export function RatioSettingsCard({
         TopupGroupRatio: normalizeJsonString(values.TopupGroupRatio),
         UserUsableGroups: normalizeJsonString(values.UserUsableGroups),
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
+        GroupFallbackModels: normalizeJsonString(values.GroupFallbackModels),
         AutoGroups: normalizeJsonString(values.AutoGroups),
         DefaultUseAutoGroup: values.DefaultUseAutoGroup,
         GroupSpecialUsableGroup: normalizeJsonString(

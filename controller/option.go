@@ -154,6 +154,8 @@ func validateOptionUpdate(key string, value string) error {
 	case "AutoGroups":
 		var parsed []string
 		return common.UnmarshalJsonStr(value, &parsed)
+	case "GroupFallbackModels":
+		return setting.CheckGroupFallbackModels(value)
 	case "group_ratio_setting.group_special_usable_group":
 		var parsed map[string]map[string]string
 		return common.UnmarshalJsonStr(value, &parsed)

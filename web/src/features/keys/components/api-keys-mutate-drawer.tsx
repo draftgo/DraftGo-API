@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -35,6 +35,7 @@ import {
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
 import { MultiSelect } from '@/components/multi-select'
+import { OrderedModelSelect } from '@/components/ordered-model-select'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -102,12 +103,25 @@ export function ApiKeysMutateDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
+  const schema = getApiKeyFormSchema(t)
+  const form = useForm<ApiKeyFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
+  })
+  const selectedGroup = form.watch('group')
+  const fallbackModelEnabled = form.watch('fallback_model_enabled')
 
-  // Fetch models
+  // The model limits list remains global; fallback choices are scoped to the token group.
   const { data: modelsData } = useQuery({
     queryKey: ['user-models'],
     queryFn: getUserModels,
     enabled: open,
+    staleTime: 0,
+  })
+  const { data: fallbackModelsData } = useQuery({
+    queryKey: ['user-models', selectedGroup || ''],
+    queryFn: () => getUserModels(selectedGroup),
+    enabled: open && !!selectedGroup,
     staleTime: 0,
   })
 
@@ -119,23 +133,21 @@ export function ApiKeysMutateDrawer({
     staleTime: 0,
   })
 
-  const models = modelsData?.data || []
-  const groupsRaw = groupsData?.data || {}
-  const groups: ApiKeyGroupOption[] = sortAutoGroupFirst(
-    Object.entries(groupsRaw).map(([key, info]) => ({
-      value: key,
-      label: key,
-      desc: info.desc || key,
-      ratio: info.ratio,
-    }))
+  const models = modelsData?.data ?? []
+  const fallbackModels = fallbackModelsData?.data ?? []
+  const groups = useMemo<ApiKeyGroupOption[]>(
+    () =>
+      sortAutoGroupFirst(
+        Object.entries(groupsData?.data ?? {}).map(([key, info]) => ({
+          value: key,
+          label: key,
+          desc: info.desc || key,
+          ratio: info.ratio,
+        }))
+      ),
+    [groupsData?.data]
   )
   const backendHasAuto = groups.some((g) => g.value === 'auto')
-  const schema = getApiKeyFormSchema(t)
-
-  const form = useForm<ApiKeyFormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: getApiKeyFormDefaultValues(defaultUseAutoGroup),
-  })
 
   // Load existing data when updating
   useEffect(() => {
@@ -162,6 +174,7 @@ export function ApiKeysMutateDrawer({
         groups[0]?.value ??
         ''
       form.setValue('group', fallback)
+      form.setValue('fallback_models', [])
       if (currentGroup === 'auto') {
         form.setValue('cross_group_retry', false)
       }
@@ -248,7 +261,6 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const selectedGroup = form.watch('group')
   const unlimitedQuota = form.watch('unlimited_quota')
 
   return (
@@ -311,7 +323,15 @@ export function ApiKeysMutateDrawer({
                       <ApiKeyGroupCombobox
                         options={groups}
                         value={field.value}
-                        onValueChange={field.onChange}
+                        onValueChange={(value) => {
+                          if (value !== field.value) {
+                            form.setValue('fallback_models', [], {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }
+                          field.onChange(value)
+                        }}
                         placeholder={t('Select a group')}
                       />
                     </FormControl>
@@ -548,6 +568,61 @@ export function ApiKeysMutateDrawer({
                           </FormControl>
                           <FormDescription>
                             {t('Limit which models can be used with this key')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='fallback_model_enabled'
+                      render={({ field }) => (
+                        <FormItem className={sideDrawerSwitchItemClassName()}>
+                          <div className='flex flex-col gap-0.5'>
+                            <FormLabel className='text-sm'>
+                              {t('Token fallback models')}
+                            </FormLabel>
+                            <FormDescription className='text-xs'>
+                              {t(
+                                'Try the requested model first, then the selected fallback models in order.'
+                              )}
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='fallback_models'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Fallback model order')}</FormLabel>
+                          <FormControl>
+                            <OrderedModelSelect
+                              options={fallbackModels.map((model) => ({
+                                label: model,
+                                value: model,
+                              }))}
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder={t(
+                                'Select fallback models (empty to follow system settings)'
+                              )}
+                              disabled={!fallbackModelEnabled}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Models are limited to the selected token group; auto includes every usable auto group.'
+                            )}
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

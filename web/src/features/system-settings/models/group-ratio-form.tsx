@@ -60,6 +60,7 @@ import {
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
+import { GroupFallbackModelsEditor } from './group-fallback-models-editor'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 
 type GroupFormValues = {
@@ -67,6 +68,7 @@ type GroupFormValues = {
   TopupGroupRatio: string
   UserUsableGroups: string
   GroupGroupRatio: string
+  GroupFallbackModels: string
   AutoGroups: string
   DefaultUseAutoGroup: boolean
   GroupSpecialUsableGroup: string
@@ -104,6 +106,8 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const watchedGroupRatio = form.watch('GroupRatio')
   const watchedUserUsableGroups = form.watch('UserUsableGroups')
   const watchedTopupGroupRatio = form.watch('TopupGroupRatio')
+  const watchedAutoGroups = form.watch('AutoGroups')
+  const watchedFallbackModels = form.watch('GroupFallbackModels')
   const groupNames = useMemo(() => {
     const ratioMap = safeJsonParse<Record<string, number>>(watchedGroupRatio, {
       fallback: {},
@@ -117,14 +121,30 @@ export const GroupRatioForm = memo(function GroupRatioForm({
       watchedTopupGroupRatio,
       { fallback: {}, silent: true }
     )
+    const autoGroups = safeJsonParse<string[]>(watchedAutoGroups, {
+      fallback: [],
+      silent: true,
+    })
+    const fallbackMap = safeJsonParse<Record<string, string[]>>(
+      watchedFallbackModels,
+      { fallback: {}, silent: true }
+    )
     return [
       ...new Set([
         ...Object.keys(ratioMap),
         ...Object.keys(usableMap),
         ...Object.keys(topupMap),
+        ...autoGroups,
+        ...Object.keys(fallbackMap),
       ]),
     ]
-  }, [watchedGroupRatio, watchedUserUsableGroups, watchedTopupGroupRatio])
+  }, [
+    watchedAutoGroups,
+    watchedFallbackModels,
+    watchedGroupRatio,
+    watchedTopupGroupRatio,
+    watchedUserUsableGroups,
+  ])
 
   return (
     <div className='space-y-6'>
@@ -180,6 +200,14 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               groupOptions={groupNames}
               onChange={(value) =>
                 handleFieldChange('GroupSpecialUsableGroup', value)
+              }
+            />
+
+            <GroupFallbackModelsEditor
+              value={form.watch('GroupFallbackModels')}
+              groupOptions={groupNames}
+              onChange={(value) =>
+                handleFieldChange('GroupFallbackModels', value)
               }
             />
 
@@ -306,6 +334,31 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                     {`{ targetGroup: ratio }`}{' '}
                     {t(
                       'to override billing when a user in one group uses a token of another group.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='GroupFallbackModels'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Group fallback models')}</FormLabel>
+                  <FormControl>
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'JSON map of group names to ordered fallback model arrays.'
                     )}
                   </FormDescription>
                   <FormMessage />
