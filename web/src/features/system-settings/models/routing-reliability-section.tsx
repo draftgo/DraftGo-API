@@ -90,7 +90,8 @@ const routingReliabilitySchema = z
       recovery_mode: z.enum(['follow', 'independent']),
       recovery_probe_minutes: z.coerce
         .number()
-        .positive('Interval must be greater than 0 minutes'),
+        .positive('Interval must be greater than 0 minutes')
+        .max(5, 'Normal-priority interval cannot exceed 5 minutes'),
       recovery_probe_count: z.coerce
         .number()
         .int()
@@ -99,6 +100,15 @@ const routingReliabilitySchema = z
         .number()
         .int()
         .min(0, 'Threshold must be non-negative'),
+      recovery_high_priority_minutes: z.coerce
+        .number()
+        .positive('Interval must be greater than 0 minutes')
+        .max(2, 'High-priority interval cannot exceed 2 minutes'),
+      recovery_high_priority_threshold: z.coerce.number().int(),
+      recovery_probation_seconds: z.coerce.number().int().min(60).max(120),
+      recovery_worker_count: z.coerce.number().int().min(2).max(4),
+      recovery_max_output_tokens: z.coerce.number().int().min(1).max(16),
+      recovery_daily_probe_budget: z.coerce.number().int().min(1),
     }),
   })
   .superRefine((values, ctx) => {
@@ -153,6 +163,12 @@ type RoutingReliabilitySectionProps = {
     'monitor_setting.recovery_probe_minutes': number
     'monitor_setting.recovery_probe_count': number
     'monitor_setting.recovery_threshold_seconds': number
+    'monitor_setting.recovery_high_priority_minutes': number
+    'monitor_setting.recovery_high_priority_threshold': number
+    'monitor_setting.recovery_probation_seconds': number
+    'monitor_setting.recovery_worker_count': number
+    'monitor_setting.recovery_max_output_tokens': number
+    'monitor_setting.recovery_daily_probe_budget': number
   }
 }
 
@@ -180,6 +196,12 @@ type NormalizedRoutingReliabilityValues = {
   'monitor_setting.recovery_probe_minutes': number
   'monitor_setting.recovery_probe_count': number
   'monitor_setting.recovery_threshold_seconds': number
+  'monitor_setting.recovery_high_priority_minutes': number
+  'monitor_setting.recovery_high_priority_threshold': number
+  'monitor_setting.recovery_probation_seconds': number
+  'monitor_setting.recovery_worker_count': number
+  'monitor_setting.recovery_max_output_tokens': number
+  'monitor_setting.recovery_daily_probe_budget': number
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -222,6 +244,18 @@ const buildFormDefaults = (
     recovery_probe_count: defaults['monitor_setting.recovery_probe_count'] ?? 1,
     recovery_threshold_seconds:
       defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
+    recovery_high_priority_minutes:
+      defaults['monitor_setting.recovery_high_priority_minutes'] ?? 2,
+    recovery_high_priority_threshold:
+      defaults['monitor_setting.recovery_high_priority_threshold'] ?? 10,
+    recovery_probation_seconds:
+      defaults['monitor_setting.recovery_probation_seconds'] ?? 60,
+    recovery_worker_count:
+      defaults['monitor_setting.recovery_worker_count'] ?? 4,
+    recovery_max_output_tokens:
+      defaults['monitor_setting.recovery_max_output_tokens'] ?? 16,
+    recovery_daily_probe_budget:
+      defaults['monitor_setting.recovery_daily_probe_budget'] ?? 200,
   },
 })
 
@@ -269,6 +303,18 @@ const normalizeDefaults = (
     defaults['monitor_setting.recovery_probe_count'] ?? 1,
   'monitor_setting.recovery_threshold_seconds':
     defaults['monitor_setting.recovery_threshold_seconds'] ?? 15,
+  'monitor_setting.recovery_high_priority_minutes':
+    defaults['monitor_setting.recovery_high_priority_minutes'] ?? 2,
+  'monitor_setting.recovery_high_priority_threshold':
+    defaults['monitor_setting.recovery_high_priority_threshold'] ?? 10,
+  'monitor_setting.recovery_probation_seconds':
+    defaults['monitor_setting.recovery_probation_seconds'] ?? 60,
+  'monitor_setting.recovery_worker_count':
+    defaults['monitor_setting.recovery_worker_count'] ?? 4,
+  'monitor_setting.recovery_max_output_tokens':
+    defaults['monitor_setting.recovery_max_output_tokens'] ?? 16,
+  'monitor_setting.recovery_daily_probe_budget':
+    defaults['monitor_setting.recovery_daily_probe_budget'] ?? 200,
 })
 
 const normalizeFormValues = (
@@ -306,6 +352,18 @@ const normalizeFormValues = (
     values.monitor_setting.recovery_probe_count,
   'monitor_setting.recovery_threshold_seconds':
     values.monitor_setting.recovery_threshold_seconds,
+  'monitor_setting.recovery_high_priority_minutes':
+    values.monitor_setting.recovery_high_priority_minutes,
+  'monitor_setting.recovery_high_priority_threshold':
+    values.monitor_setting.recovery_high_priority_threshold,
+  'monitor_setting.recovery_probation_seconds':
+    values.monitor_setting.recovery_probation_seconds,
+  'monitor_setting.recovery_worker_count':
+    values.monitor_setting.recovery_worker_count,
+  'monitor_setting.recovery_max_output_tokens':
+    values.monitor_setting.recovery_max_output_tokens,
+  'monitor_setting.recovery_daily_probe_budget':
+    values.monitor_setting.recovery_daily_probe_budget,
 })
 
 export function RoutingReliabilitySection({
@@ -563,7 +621,7 @@ export function RoutingReliabilitySection({
               />
             </div>
 
-            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+            <div className='grid min-w-0 gap-6 lg:grid-cols-3'>
               <FormField
                 control={form.control}
                 name='StreamFirstResponseTimeoutSeconds'
@@ -870,12 +928,13 @@ export function RoutingReliabilitySection({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      {t('Recovery probe interval (minutes)')}
+                      {t('Normal-priority maximum interval (minutes)')}
                     </FormLabel>
                     <FormControl>
                       <Input
                         type='number'
-                        min={0.1}
+                        min={1}
+                        max={5}
                         step={0.1}
                         disabled={
                           form.watch('monitor_setting.recovery_mode') !==
@@ -896,7 +955,9 @@ export function RoutingReliabilitySection({
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('How often disabled channels are probed for recovery')}
+                      {t(
+                        'Long-running failures are checked no less often than this interval'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -919,7 +980,7 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Recovery checks must finish within this time; 0 disables the limit'
+                        'Each probe is canceled at the smaller of this value and the channel test timeout; 0 uses the channel test timeout'
                       )}
                     </FormDescription>
                     <FormMessage />
@@ -932,7 +993,7 @@ export function RoutingReliabilitySection({
                 name='monitor_setting.recovery_probe_count'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Recovery probe attempts')}</FormLabel>
+                    <FormLabel>{t('Consecutive successful rounds')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -947,7 +1008,154 @@ export function RoutingReliabilitySection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Concurrent tests per recovery round; all must pass within the recovery threshold'
+                        'Successful probe rounds required before enabling; probation always includes a later confirmation'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_high_priority_minutes'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('High-priority maximum interval (minutes)')}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0.1}
+                        max={2}
+                        step={0.1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'High-priority channels are checked no less often than this interval'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_high_priority_threshold'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('High-priority threshold')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Channels at or above this priority use the shorter maximum interval'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_probation_seconds'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Probation duration (seconds)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={60}
+                        max={120}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Delay before the confirmation probe after the first successful event'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_worker_count'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Global recovery workers')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={2}
+                        max={4}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Database-leased worker slots shared by all nodes')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_max_output_tokens'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Probe output token limit')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={16}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Maximum output requested from upstream; capped at 16 tokens'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='monitor_setting.recovery_daily_probe_budget'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Daily probe soft budget')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        step={1}
+                        {...safeNumberFieldProps(field)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'After this count, probing continues at the maximum interval and administrators are notified'
                       )}
                     </FormDescription>
                     <FormMessage />

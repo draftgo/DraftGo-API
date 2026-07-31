@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,8 +13,6 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -39,19 +38,20 @@ import (
 )
 
 type testResult struct {
-	context     *gin.Context
-	localErr    error
-	newAPIError *types.NewAPIError
+	context      *gin.Context
+	localErr     error
+	newAPIError  *types.NewAPIError
+	upstreamSent bool
+	cancelReason string
 }
 
 type channelTestOptions struct {
 	forcedMultiKeyIndex *int
+	recoveryProbe       bool
+	timeout             time.Duration
 }
 
-type recoveryProbeAttempt struct {
-	result       testResult
-	milliseconds int64
-}
+var errUnsafeAutomaticRecoveryProbe = errors.New("automatic recovery probe requires a streaming text test model")
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
@@ -170,11 +170,23 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 	isStream = isStream && channelTestEndpointSupportsStream(endpointType, requestPath)
+	if testOptions.recoveryProbe && (requestPath == "/v1/images/generations" ||
+		strings.Contains(requestPath, "/videos") ||
+		strings.HasPrefix(requestPath, "/v1/responses/compact")) {
+		return testResult{
+			localErr:    errUnsafeAutomaticRecoveryProbe,
+			newAPIError: types.NewError(errUnsafeAutomaticRecoveryProbe, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry()),
+		}
+	}
 
 	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
 
-	if timeoutSeconds > 0 {
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	if testOptions.timeout > 0 {
+		timeout = testOptions.timeout
+	}
+	if timeout > 0 {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 	}
@@ -255,7 +267,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 	}
 
-	request := buildTestRequest(testModel, endpointType, channel, isStream)
+	maxOutputTokens := operation_setting.GetMonitorSetting().RecoveryMaxOutputTokens
+	if maxOutputTokens < 1 || maxOutputTokens > 16 {
+		maxOutputTokens = 16
+	}
+	request := buildTestRequest(testModel, endpointType, channel, isStream, uint(maxOutputTokens))
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -453,9 +469,10 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+			context:      c,
+			localErr:     err,
+			newAPIError:  types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+			upstreamSent: true,
 		}
 	}
 	var httpResp *http.Response
@@ -474,10 +491,45 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 				err,
 			))
 			return testResult{
-				context:     c,
-				localErr:    err,
-				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+				context:      c,
+				localErr:     err,
+				newAPIError:  types.NewOpenAIError(err, types.ErrorCodeBadResponse, httpResp.StatusCode),
+				upstreamSent: true,
 			}
+		}
+	}
+	if testOptions.recoveryProbe {
+		if httpResp == nil || httpResp.Body == nil {
+			err := errors.New("recovery probe upstream response is empty")
+			return testResult{
+				context:      c,
+				localErr:     err,
+				newAPIError:  types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway),
+				upstreamSent: true,
+			}
+		}
+		defer func() { _ = httpResp.Body.Close() }()
+		if err := waitForRecoveryProbeEvent(c.Request.Context(), httpResp, isStream); err != nil {
+			cancelReason := "read_error"
+			errorCode := types.ErrorCodeBadResponseBody
+			statusCode := http.StatusBadGateway
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(c.Request.Context().Err(), context.DeadlineExceeded) {
+				cancelReason = "recovery_threshold"
+				errorCode = types.ErrorCodeChannelStreamFirstResponseTimeout
+				statusCode = http.StatusGatewayTimeout
+			}
+			return testResult{
+				context:      c,
+				localErr:     err,
+				newAPIError:  types.NewOpenAIError(err, errorCode, statusCode),
+				upstreamSent: true,
+				cancelReason: cancelReason,
+			}
+		}
+		return testResult{
+			context:      c,
+			upstreamSent: true,
+			cancelReason: "first_event",
 		}
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
@@ -736,78 +788,6 @@ func shouldEnableChannelAfterRecoveryProbe(newAPIError *types.NewAPIError, statu
 	return isWithinRecoveryThreshold(milliseconds)
 }
 
-func recoveryProbeCount() int {
-	count := operation_setting.GetMonitorSetting().RecoveryProbeCount
-	if count < 1 {
-		return 1
-	}
-	return count
-}
-
-func runRecoveryProbeAttempts(channel *model.Channel, probeUserID int, options channelTestOptions) []recoveryProbeAttempt {
-	count := recoveryProbeCount()
-	attempts := make([]recoveryProbeAttempt, count)
-	var wg sync.WaitGroup
-	wg.Add(count)
-	for i := 0; i < count; i++ {
-		index := i
-		go func() {
-			defer wg.Done()
-			tik := time.Now()
-			result := testChannel(context.Background(), channel, probeUserID, "", "", true, common.ChannelTestDefaultTimeout, options)
-			attempts[index] = recoveryProbeAttempt{
-				result:       result,
-				milliseconds: time.Since(tik).Milliseconds(),
-			}
-		}()
-	}
-	wg.Wait()
-	return attempts
-}
-
-func allRecoveryProbeAttemptsPassed(attempts []recoveryProbeAttempt, status int) bool {
-	if len(attempts) == 0 {
-		return false
-	}
-	for _, attempt := range attempts {
-		if !shouldEnableChannelAfterRecoveryProbe(attempt.result.newAPIError, status, attempt.milliseconds) {
-			return false
-		}
-	}
-	return true
-}
-
-func firstPassedRecoveryProbeAttempt(attempts []recoveryProbeAttempt, status int) *recoveryProbeAttempt {
-	for i := range attempts {
-		if shouldEnableChannelAfterRecoveryProbe(attempts[i].result.newAPIError, status, attempts[i].milliseconds) {
-			return &attempts[i]
-		}
-	}
-	return nil
-}
-
-func firstRecoveryProbeContext(attempts []recoveryProbeAttempt) *gin.Context {
-	for _, attempt := range attempts {
-		if attempt.result.context != nil {
-			return attempt.result.context
-		}
-	}
-	return nil
-}
-
-func findMultiKeyIndexByKey(channel *model.Channel, usingKey string) *int {
-	if channel == nil || !channel.ChannelInfo.IsMultiKey || usingKey == "" {
-		return nil
-	}
-	for index, key := range channel.GetKeys() {
-		if key == usingKey {
-			idx := index
-			return &idx
-		}
-	}
-	return nil
-}
-
 func isWithinRecoveryThreshold(milliseconds int64) bool {
 	thresholdSeconds := operation_setting.GetMonitorSetting().RecoveryThresholdSeconds
 	if thresholdSeconds <= 0 {
@@ -845,8 +825,21 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
-func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool, maxOutputTokens uint) dto.Request {
+	if maxOutputTokens == 0 || maxOutputTokens > 16 {
+		maxOutputTokens = 16
+	}
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
+	var enableThinking json.RawMessage
+	var thinkingBudget json.RawMessage
+	var think json.RawMessage
+	if dto.IsQwenThinkingBudgetModel(model) {
+		enableThinking = json.RawMessage("false")
+		thinkingBudget = json.RawMessage("0")
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeOllama {
+		think = json.RawMessage("false")
+	}
 
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
@@ -876,9 +869,12 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		case constant.EndpointTypeOpenAIResponse:
 			// 返回 OpenAIResponsesRequest
 			return &dto.OpenAIResponsesRequest{
-				Model:  model,
-				Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
-				Stream: lo.ToPtr(isStream),
+				Model:           model,
+				Input:           json.RawMessage(`[{"role":"user","content":"hi"}]`),
+				Stream:          lo.ToPtr(isStream),
+				MaxOutputTokens: lo.ToPtr(maxOutputTokens),
+				EnableThinking:  enableThinking,
+				ThinkingBudget:  thinkingBudget,
 			}
 		case constant.EndpointTypeOpenAIResponseCompact:
 			// 返回 OpenAIResponsesCompactionRequest
@@ -888,10 +884,6 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			}
 		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI:
 			// 返回 GeneralOpenAIRequest
-			maxTokens := uint(16)
-			if constant.EndpointType(endpointType) == constant.EndpointTypeGemini {
-				maxTokens = 3000
-			}
 			req := &dto.GeneralOpenAIRequest{
 				Model:  model,
 				Stream: lo.ToPtr(isStream),
@@ -901,7 +893,10 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 						Content: "hi",
 					},
 				},
-				MaxTokens: lo.ToPtr(maxTokens),
+				MaxTokens:      lo.ToPtr(maxOutputTokens),
+				EnableThinking: enableThinking,
+				ThinkingBudget: thinkingBudget,
+				Think:          think,
 			}
 			if isStream {
 				req.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
@@ -942,9 +937,12 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// Responses-only models (e.g. codex series)
 	if strings.Contains(strings.ToLower(model), "codex") {
 		return &dto.OpenAIResponsesRequest{
-			Model:  model,
-			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
-			Stream: lo.ToPtr(isStream),
+			Model:           model,
+			Input:           json.RawMessage(`[{"role":"user","content":"hi"}]`),
+			Stream:          lo.ToPtr(isStream),
+			MaxOutputTokens: lo.ToPtr(maxOutputTokens),
+			EnableThinking:  enableThinking,
+			ThinkingBudget:  thinkingBudget,
 		}
 	}
 
@@ -958,24 +956,66 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Content: "hi",
 			},
 		},
+		EnableThinking: enableThinking,
+		ThinkingBudget: thinkingBudget,
+		Think:          think,
 	}
 	if isStream {
 		testRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
 
 	if dto.IsOpenAIReasoningOModel(model) {
-		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
-	} else if strings.Contains(model, "thinking") {
-		if !strings.Contains(model, "claude") {
-			testRequest.MaxTokens = lo.ToPtr(uint(50))
-		}
-	} else if strings.Contains(model, "gemini") {
-		testRequest.MaxTokens = lo.ToPtr(uint(3000))
+		testRequest.MaxCompletionTokens = lo.ToPtr(maxOutputTokens)
 	} else {
-		testRequest.MaxTokens = lo.ToPtr(uint(16))
+		testRequest.MaxTokens = lo.ToPtr(maxOutputTokens)
 	}
 
 	return testRequest
+}
+
+func waitForRecoveryProbeEvent(ctx context.Context, response *http.Response, isStream bool) error {
+	if response == nil || response.Body == nil {
+		return errors.New("upstream response body is empty")
+	}
+	if !isStream || !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "event-stream") {
+		var firstByte [1]byte
+		for {
+			_, err := response.Body.Read(firstByte[:])
+			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return err
+			}
+			if firstByte[0] != ' ' && firstByte[0] != '\t' && firstByte[0] != '\r' && firstByte[0] != '\n' {
+				return nil
+			}
+		}
+	}
+
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 4096), 256<<10)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if !bytes.HasPrefix(line, []byte("data:")) {
+			continue
+		}
+		payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
+		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+			continue
+		}
+		if message := detectErrorMessageFromJSONBytes(payload); message != "" {
+			return fmt.Errorf("upstream error: %s", message)
+		}
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return errors.New("stream ended before a valid upstream event")
 }
 
 func TestChannel(c *gin.Context) {
@@ -1065,6 +1105,8 @@ type channelTestSummary struct {
 	Disabled  int `json:"disabled"`
 	Enabled   int `json:"enabled"`
 }
+
+const channelTestModeManualAll = "manual_all"
 
 // performChannelTests runs the channel test loop synchronously, honoring ctx
 // cancellation so a system-task runner that loses its lease stops promptly. When
@@ -1172,7 +1214,7 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	if strings.TrimSpace(mode) == "" {
 		mode = operation_setting.GetMonitorSetting().ChannelTestMode
 	}
-	selected := selectChannelsForAutomaticTest(channels, mode)
+	selected := selectChannelsForAutomaticTest(channels, mode, operation_setting.GetMonitorSetting().RecoveryMode)
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
@@ -1181,13 +1223,16 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	return summary, nil
 }
 
-func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*model.Channel {
+func selectChannelsForAutomaticTest(channels []*model.Channel, mode string, recoveryMode string) []*model.Channel {
 	selected := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
 		if channel.Status == common.ChannelStatusManuallyDisabled {
 			continue
 		}
 		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
+			continue
+		}
+		if recoveryMode == "independent" && mode != channelTestModeManualAll && channel.Status == common.ChannelStatusAutoDisabled {
 			continue
 		}
 		selected = append(selected, channel)
@@ -1200,7 +1245,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c *gin.Context) {
 	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
-		Mode:   operation_setting.ChannelTestModeScheduledAll,
+		Mode:   channelTestModeManualAll,
 		Notify: true,
 	})
 	if err != nil {
@@ -1227,171 +1272,4 @@ func TestAllChannels(c *gin.Context) {
 			"status":  task.Status,
 		},
 	})
-}
-
-var recoveryProbeOnce sync.Once
-
-func recoveryProbeInterval(setting *operation_setting.MonitorSetting) time.Duration {
-	interval := setting.RecoveryProbeMinutes
-	if interval <= 0 {
-		interval = 5
-	}
-	return time.Duration(interval * float64(time.Minute))
-}
-
-func AutomaticallyProbeDisabledChannels() {
-	if !common.IsMasterNode {
-		return
-	}
-	recoveryProbeOnce.Do(func() {
-		for {
-			setting := operation_setting.GetMonitorSetting()
-			if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-			var running atomic.Bool
-			for {
-				setting = operation_setting.GetMonitorSetting()
-				if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
-					break
-				}
-				interval := recoveryProbeInterval(setting)
-				time.Sleep(interval)
-				setting = operation_setting.GetMonitorSetting()
-				if setting.RecoveryMode != "independent" || !common.AutomaticEnableChannelEnabled {
-					break
-				}
-				if !running.CompareAndSwap(false, true) {
-					common.SysLog("recovery probe: previous round still running, skipping this tick")
-					continue
-				}
-				go func() {
-					defer func() {
-						running.Store(false)
-					}()
-					common.SysLog("recovery probe: testing disabled channels")
-					probeDisabledChannels()
-					common.SysLog("recovery probe: finished")
-				}()
-			}
-		}
-	})
-}
-
-type recoveryProbeChannelRunner func(channel *model.Channel, probeUserID int)
-
-func probeDisabledChannels() {
-	channels, err := getRecoveryProbeChannels()
-	if err != nil {
-		common.SysError("recovery probe: failed to get disabled channels: " + err.Error())
-		return
-	}
-	if len(channels) == 0 {
-		return
-	}
-	probeUserID, err := resolveChannelTestUserID(nil)
-	if err != nil {
-		common.SysError("recovery probe: " + err.Error())
-		return
-	}
-	probeRecoveryChannels(channels, probeUserID, probeRecoveryChannel)
-}
-
-func probeAutoDisabledChannelImmediately(channelError types.ChannelError) {
-	if !common.AutomaticEnableChannelEnabled {
-		return
-	}
-	channel, err := model.CacheGetChannel(channelError.ChannelId)
-	if err != nil {
-		channel, err = model.GetChannelById(channelError.ChannelId, true)
-	}
-	if err != nil {
-		common.SysError(fmt.Sprintf("immediate recovery probe: failed to get channel #%d: %s", channelError.ChannelId, err.Error()))
-		return
-	}
-	probeUserID, err := resolveChannelTestUserID(nil)
-	if err != nil {
-		common.SysError("immediate recovery probe: " + err.Error())
-		return
-	}
-	options := channelTestOptions{}
-	if keyIndex := findMultiKeyIndexByKey(channel, channelError.UsingKey); keyIndex != nil {
-		options.forcedMultiKeyIndex = keyIndex
-	}
-	attempts := runRecoveryProbeAttempts(channel, probeUserID, options)
-	if passed := firstPassedRecoveryProbeAttempt(attempts, common.ChannelStatusAutoDisabled); passed != nil && passed.result.context != nil {
-		service.EnableChannel(channel.Id, common.GetContextKeyString(passed.result.context, constant.ContextKeyChannelKey), channel.Name)
-	}
-}
-
-func probeRecoveryChannels(channels []*model.Channel, probeUserID int, runner recoveryProbeChannelRunner) {
-	var wg sync.WaitGroup
-	for _, channel := range channels {
-		if channel == nil {
-			continue
-		}
-		ch := channel
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runner(ch, probeUserID)
-		}()
-	}
-	wg.Wait()
-}
-
-func probeRecoveryChannel(channel *model.Channel, probeUserID int) {
-	if channel.ChannelInfo.IsMultiKey {
-		probeMultiKeyRecovery(channel, probeUserID)
-		return
-	}
-	attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{})
-	if allRecoveryProbeAttemptsPassed(attempts, channel.Status) {
-		if context := firstRecoveryProbeContext(attempts); context != nil {
-			service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
-		}
-	}
-}
-
-func getRecoveryProbeChannels() ([]*model.Channel, error) {
-	autoDisabledChannels, err := model.GetAutoDisabledChannels()
-	if err != nil {
-		return nil, err
-	}
-	multiKeyChannels, err := model.GetChannelsWithAutoDisabledMultiKeys()
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[int]struct{}, len(autoDisabledChannels)+len(multiKeyChannels))
-	channels := make([]*model.Channel, 0, len(autoDisabledChannels)+len(multiKeyChannels))
-	for _, channel := range append(autoDisabledChannels, multiKeyChannels...) {
-		if channel == nil {
-			continue
-		}
-		if _, ok := seen[channel.Id]; ok {
-			continue
-		}
-		seen[channel.Id] = struct{}{}
-		channels = append(channels, channel)
-	}
-	return channels, nil
-}
-
-func probeMultiKeyRecovery(channel *model.Channel, probeUserID int) {
-	for keyIndex, status := range channel.ChannelInfo.MultiKeyStatusList {
-		if status != common.ChannelStatusAutoDisabled {
-			continue
-		}
-		idx := keyIndex
-		attempts := runRecoveryProbeAttempts(channel, probeUserID, channelTestOptions{
-			forcedMultiKeyIndex: &idx,
-		})
-		if allRecoveryProbeAttemptsPassed(attempts, common.ChannelStatusAutoDisabled) {
-			if context := firstRecoveryProbeContext(attempts); context != nil {
-				service.EnableChannel(channel.Id, common.GetContextKeyString(context, constant.ContextKeyChannelKey), channel.Name)
-			}
-		}
-		time.Sleep(common.RequestInterval)
-	}
 }

@@ -2,10 +2,14 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -292,7 +296,7 @@ func TestSelectChannelsForAutomaticTestPassiveRecoveryOnlyUsesAutoDisabled(t *te
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModePassiveRecovery)
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModePassiveRecovery, "follow")
 
 	require.Len(t, selected, 1)
 	require.Equal(t, 2, selected[0].Id)
@@ -305,11 +309,80 @@ func TestSelectChannelsForAutomaticTestScheduledSkipsManualDisabled(t *testing.T
 		{Id: 3, Status: common.ChannelStatusManuallyDisabled},
 	}
 
-	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll)
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll, "follow")
 
 	require.Len(t, selected, 2)
 	require.Equal(t, 1, selected[0].Id)
 	require.Equal(t, 2, selected[1].Id)
+}
+
+func TestSelectChannelsForAutomaticTestIndependentRecoverySkipsAutoDisabled(t *testing.T) {
+	channels := []*model.Channel{
+		{Id: 1, Status: common.ChannelStatusEnabled},
+		{Id: 2, Status: common.ChannelStatusAutoDisabled},
+	}
+
+	selected := selectChannelsForAutomaticTest(channels, operation_setting.ChannelTestModeScheduledAll, "independent")
+
+	require.Len(t, selected, 1)
+	assert.Equal(t, 1, selected[0].Id)
+}
+
+func TestBuildTestRequestCapsGeminiAndResponsesOutput(t *testing.T) {
+	geminiRequest, ok := buildTestRequest("gemini-2.5-pro", string(constant.EndpointTypeGemini), &model.Channel{}, true, 16).(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	require.NotNil(t, geminiRequest.MaxTokens)
+	assert.Equal(t, uint(16), *geminiRequest.MaxTokens)
+	assert.Empty(t, geminiRequest.EnableThinking)
+	assert.Empty(t, geminiRequest.Think)
+
+	responsesRequest, ok := buildTestRequest("gpt-5", string(constant.EndpointTypeOpenAIResponse), &model.Channel{}, true, 16).(*dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	require.NotNil(t, responsesRequest.MaxOutputTokens)
+	assert.Equal(t, uint(16), *responsesRequest.MaxOutputTokens)
+	assert.Empty(t, responsesRequest.EnableThinking)
+
+	qwenRequest, ok := buildTestRequest("qwen3", string(constant.EndpointTypeOpenAI), &model.Channel{}, true, 16).(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Equal(t, "false", string(qwenRequest.EnableThinking))
+	assert.Equal(t, "0", string(qwenRequest.ThinkingBudget))
+
+	ollamaRequest, ok := buildTestRequest("llama3", string(constant.EndpointTypeOpenAI), &model.Channel{Type: constant.ChannelTypeOllama}, true, 16).(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	assert.Equal(t, "false", string(ollamaRequest.Think))
+}
+
+func TestWaitForRecoveryProbeEventReturnsOnFirstSSEEvent(t *testing.T) {
+	response := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:   io.NopCloser(strings.NewReader("event: response.created\ndata: {\"type\":\"response.created\"}\n\ndata: {\"type\":\"response.completed\"}\n")),
+	}
+
+	err := waitForRecoveryProbeEvent(context.Background(), response, true)
+
+	require.NoError(t, err)
+}
+
+type canceledProbeReader struct {
+	ctx context.Context
+}
+
+func (reader canceledProbeReader) Read(_ []byte) (int, error) {
+	<-reader.ctx.Done()
+	return 0, reader.ctx.Err()
+}
+
+func TestWaitForRecoveryProbeEventReturnsDeadlineCancellation(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer cancel()
+	response := &http.Response{
+		Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:   io.NopCloser(canceledProbeReader{ctx: ctx}),
+	}
+
+	err := waitForRecoveryProbeEvent(ctx, response, true)
+
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestTestAllChannelsRejectsExistingActiveTask(t *testing.T) {

@@ -1088,6 +1088,9 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := service.ResetChannelRecoveryAfterConfigurationChange(channel.Id); err != nil {
+		common.SysError(fmt.Sprintf("failed to reset channel recovery after configuration change: channel_id=%d error=%v", channel.Id, err))
+	}
 	model.InitChannelCache()
 	if proxyChanged {
 		service.InvalidateProxyClient(originProxy)
@@ -1137,6 +1140,7 @@ func UpdateChannelStatus(c *gin.Context) {
 	}
 	changed := model.UpdateChannelStatus(id, "", req.Status, "manual operation")
 	if changed {
+		model.LogChannelRecoveryModelError("clear manually changed state", model.DeleteChannelRecoveryStates(id))
 		model.InitChannelCache()
 	}
 	recordManageAudit(c, "channel.status_update", map[string]interface{}{
@@ -1160,6 +1164,7 @@ func BatchUpdateChannelStatus(c *gin.Context) {
 	changedCount := 0
 	for _, id := range req.Ids {
 		if model.UpdateChannelStatus(id, "", req.Status, "manual batch operation") {
+			model.LogChannelRecoveryModelError("clear manually changed state", model.DeleteChannelRecoveryStates(id))
 			changedCount++
 		}
 	}
@@ -1686,6 +1691,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync manually disabled key", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -1728,6 +1734,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync manually enabled key", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -1752,6 +1759,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync all enabled keys", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -1799,6 +1807,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync all manually disabled keys", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -1879,6 +1888,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync deleted key indexes", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
@@ -1947,6 +1957,7 @@ func ManageMultiKeys(c *gin.Context) {
 			return
 		}
 
+		model.LogChannelRecoveryModelError("sync deleted disabled key indexes", service.ResetChannelRecoveryAfterConfigurationChange(channel.Id))
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,

@@ -416,7 +416,7 @@ func RecordStreamFirstResponseTimeoutFailure(c *gin.Context, info *relaycommon.R
 	}
 	if service.RecordFailure(channelError.ChannelId, channelError.UsingKey) {
 		gopool.Go(func() {
-			service.DisableChannel(*channelError, timeoutErr.ErrorWithStatusCode())
+			service.DisableChannelWithCode(*channelError, timeoutErr.ErrorWithStatusCode(), string(timeoutErr.GetErrorCode()), timeoutErr.StatusCode)
 		})
 	}
 }

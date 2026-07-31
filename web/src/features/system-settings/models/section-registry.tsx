@@ -101,6 +101,18 @@ const MODELS_SECTIONS = [
             settings['monitor_setting.recovery_probe_count'],
           'monitor_setting.recovery_threshold_seconds':
             settings['monitor_setting.recovery_threshold_seconds'],
+          'monitor_setting.recovery_high_priority_minutes':
+            settings['monitor_setting.recovery_high_priority_minutes'],
+          'monitor_setting.recovery_high_priority_threshold':
+            settings['monitor_setting.recovery_high_priority_threshold'],
+          'monitor_setting.recovery_probation_seconds':
+            settings['monitor_setting.recovery_probation_seconds'],
+          'monitor_setting.recovery_worker_count':
+            settings['monitor_setting.recovery_worker_count'],
+          'monitor_setting.recovery_max_output_tokens':
+            settings['monitor_setting.recovery_max_output_tokens'],
+          'monitor_setting.recovery_daily_probe_budget':
+            settings['monitor_setting.recovery_daily_probe_budget'],
         }}
       />
     ),
