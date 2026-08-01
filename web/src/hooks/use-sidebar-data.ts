@@ -27,7 +27,6 @@ import {
   ListTodo,
   MessageSquare,
   Radio,
-  Radar,
   ServerCog,
   Settings,
   Ticket,
@@ -124,11 +123,6 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
-          },
-          {
-            title: t('Upstream Probes'),
-            url: '/recovery-probes',
-            icon: Radar,
           },
           {
             title: t('Models'),

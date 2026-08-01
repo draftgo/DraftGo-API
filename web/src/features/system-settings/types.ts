@@ -246,16 +246,6 @@ export type ModelSettings = {
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
-  'monitor_setting.recovery_mode': string
-  'monitor_setting.recovery_probe_minutes': number
-  'monitor_setting.recovery_probe_count': number
-  'monitor_setting.recovery_threshold_seconds': number
-  'monitor_setting.recovery_high_priority_minutes': number
-  'monitor_setting.recovery_high_priority_threshold': number
-  'monitor_setting.recovery_probation_seconds': number
-  'monitor_setting.recovery_worker_count': number
-  'monitor_setting.recovery_max_output_tokens': number
-  'monitor_setting.recovery_daily_probe_budget': number
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean

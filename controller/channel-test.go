@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -38,20 +37,14 @@ import (
 )
 
 type testResult struct {
-	context      *gin.Context
-	localErr     error
-	newAPIError  *types.NewAPIError
-	upstreamSent bool
-	cancelReason string
+	context     *gin.Context
+	localErr    error
+	newAPIError *types.NewAPIError
 }
 
 type channelTestOptions struct {
 	forcedMultiKeyIndex *int
-	recoveryProbe       bool
-	timeout             time.Duration
 }
-
-var errUnsafeAutomaticRecoveryProbe = errors.New("automatic recovery probe requires a streaming text test model")
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
@@ -170,23 +163,11 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 	isStream = isStream && channelTestEndpointSupportsStream(endpointType, requestPath)
-	if testOptions.recoveryProbe && (requestPath == "/v1/images/generations" ||
-		strings.Contains(requestPath, "/videos") ||
-		strings.HasPrefix(requestPath, "/v1/responses/compact")) {
-		return testResult{
-			localErr:    errUnsafeAutomaticRecoveryProbe,
-			newAPIError: types.NewError(errUnsafeAutomaticRecoveryProbe, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry()),
-		}
-	}
 
 	c.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, requestPath, nil)
 
-	timeout := time.Duration(timeoutSeconds) * time.Second
-	if testOptions.timeout > 0 {
-		timeout = testOptions.timeout
-	}
-	if timeout > 0 {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
+	if timeoutSeconds > 0 {
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 	}
@@ -267,11 +248,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		}
 	}
 
-	maxOutputTokens := operation_setting.GetMonitorSetting().RecoveryMaxOutputTokens
-	if maxOutputTokens < 1 || maxOutputTokens > 16 {
-		maxOutputTokens = 16
-	}
-	request := buildTestRequest(testModel, endpointType, channel, isStream, uint(maxOutputTokens))
+	request := buildTestRequest(testModel, endpointType, channel, isStream)
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -469,10 +446,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
-			context:      c,
-			localErr:     err,
-			newAPIError:  types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
-			upstreamSent: true,
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
 		}
 	}
 	var httpResp *http.Response
@@ -491,45 +467,10 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 				err,
 			))
 			return testResult{
-				context:      c,
-				localErr:     err,
-				newAPIError:  types.NewOpenAIError(err, types.ErrorCodeBadResponse, httpResp.StatusCode),
-				upstreamSent: true,
+				context:     c,
+				localErr:    err,
+				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 			}
-		}
-	}
-	if testOptions.recoveryProbe {
-		if httpResp == nil || httpResp.Body == nil {
-			err := errors.New("recovery probe upstream response is empty")
-			return testResult{
-				context:      c,
-				localErr:     err,
-				newAPIError:  types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway),
-				upstreamSent: true,
-			}
-		}
-		defer func() { _ = httpResp.Body.Close() }()
-		if err := waitForRecoveryProbeEvent(c.Request.Context(), httpResp, isStream); err != nil {
-			cancelReason := "read_error"
-			errorCode := types.ErrorCodeBadResponseBody
-			statusCode := http.StatusBadGateway
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(c.Request.Context().Err(), context.DeadlineExceeded) {
-				cancelReason = "recovery_threshold"
-				errorCode = types.ErrorCodeChannelStreamFirstResponseTimeout
-				statusCode = http.StatusGatewayTimeout
-			}
-			return testResult{
-				context:      c,
-				localErr:     err,
-				newAPIError:  types.NewOpenAIError(err, errorCode, statusCode),
-				upstreamSent: true,
-				cancelReason: cancelReason,
-			}
-		}
-		return testResult{
-			context:      c,
-			upstreamSent: true,
-			cancelReason: "first_event",
 		}
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
@@ -781,21 +722,6 @@ func channelTestEndpointSupportsStream(endpointType, requestPath string) bool {
 	}
 }
 
-func shouldEnableChannelAfterRecoveryProbe(newAPIError *types.NewAPIError, status int, milliseconds int64) bool {
-	if !service.ShouldEnableChannel(newAPIError, status) {
-		return false
-	}
-	return isWithinRecoveryThreshold(milliseconds)
-}
-
-func isWithinRecoveryThreshold(milliseconds int64) bool {
-	thresholdSeconds := operation_setting.GetMonitorSetting().RecoveryThresholdSeconds
-	if thresholdSeconds <= 0 {
-		return true
-	}
-	return float64(milliseconds)/1000.0 <= thresholdSeconds
-}
-
 func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	if len(jsonBytes) == 0 {
 		return ""
@@ -825,21 +751,8 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
-func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool, maxOutputTokens uint) dto.Request {
-	if maxOutputTokens == 0 || maxOutputTokens > 16 {
-		maxOutputTokens = 16
-	}
+func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
-	var enableThinking json.RawMessage
-	var thinkingBudget json.RawMessage
-	var think json.RawMessage
-	if dto.IsQwenThinkingBudgetModel(model) {
-		enableThinking = json.RawMessage("false")
-		thinkingBudget = json.RawMessage("0")
-	}
-	if channel != nil && channel.Type == constant.ChannelTypeOllama {
-		think = json.RawMessage("false")
-	}
 
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
@@ -869,12 +782,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		case constant.EndpointTypeOpenAIResponse:
 			// 返回 OpenAIResponsesRequest
 			return &dto.OpenAIResponsesRequest{
-				Model:           model,
-				Input:           json.RawMessage(`[{"role":"user","content":"hi"}]`),
-				Stream:          lo.ToPtr(isStream),
-				MaxOutputTokens: lo.ToPtr(maxOutputTokens),
-				EnableThinking:  enableThinking,
-				ThinkingBudget:  thinkingBudget,
+				Model:  model,
+				Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
+				Stream: lo.ToPtr(isStream),
 			}
 		case constant.EndpointTypeOpenAIResponseCompact:
 			// 返回 OpenAIResponsesCompactionRequest
@@ -884,6 +794,10 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			}
 		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI:
 			// 返回 GeneralOpenAIRequest
+			maxTokens := uint(16)
+			if constant.EndpointType(endpointType) == constant.EndpointTypeGemini {
+				maxTokens = 3000
+			}
 			req := &dto.GeneralOpenAIRequest{
 				Model:  model,
 				Stream: lo.ToPtr(isStream),
@@ -893,10 +807,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 						Content: "hi",
 					},
 				},
-				MaxTokens:      lo.ToPtr(maxOutputTokens),
-				EnableThinking: enableThinking,
-				ThinkingBudget: thinkingBudget,
-				Think:          think,
+				MaxTokens: lo.ToPtr(maxTokens),
 			}
 			if isStream {
 				req.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
@@ -937,12 +848,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// Responses-only models (e.g. codex series)
 	if strings.Contains(strings.ToLower(model), "codex") {
 		return &dto.OpenAIResponsesRequest{
-			Model:           model,
-			Input:           json.RawMessage(`[{"role":"user","content":"hi"}]`),
-			Stream:          lo.ToPtr(isStream),
-			MaxOutputTokens: lo.ToPtr(maxOutputTokens),
-			EnableThinking:  enableThinking,
-			ThinkingBudget:  thinkingBudget,
+			Model:  model,
+			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
+			Stream: lo.ToPtr(isStream),
 		}
 	}
 
@@ -956,66 +864,24 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Content: "hi",
 			},
 		},
-		EnableThinking: enableThinking,
-		ThinkingBudget: thinkingBudget,
-		Think:          think,
 	}
 	if isStream {
 		testRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
 
 	if dto.IsOpenAIReasoningOModel(model) {
-		testRequest.MaxCompletionTokens = lo.ToPtr(maxOutputTokens)
+		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
+	} else if strings.Contains(model, "thinking") {
+		if !strings.Contains(model, "claude") {
+			testRequest.MaxTokens = lo.ToPtr(uint(50))
+		}
+	} else if strings.Contains(model, "gemini") {
+		testRequest.MaxTokens = lo.ToPtr(uint(3000))
 	} else {
-		testRequest.MaxTokens = lo.ToPtr(maxOutputTokens)
+		testRequest.MaxTokens = lo.ToPtr(uint(16))
 	}
 
 	return testRequest
-}
-
-func waitForRecoveryProbeEvent(ctx context.Context, response *http.Response, isStream bool) error {
-	if response == nil || response.Body == nil {
-		return errors.New("upstream response body is empty")
-	}
-	if !isStream || !strings.Contains(strings.ToLower(response.Header.Get("Content-Type")), "event-stream") {
-		var firstByte [1]byte
-		for {
-			_, err := response.Body.Read(firstByte[:])
-			if err != nil {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				return err
-			}
-			if firstByte[0] != ' ' && firstByte[0] != '\t' && firstByte[0] != '\r' && firstByte[0] != '\n' {
-				return nil
-			}
-		}
-	}
-
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 4096), 256<<10)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if !bytes.HasPrefix(line, []byte("data:")) {
-			continue
-		}
-		payload := bytes.TrimSpace(bytes.TrimPrefix(line, []byte("data:")))
-		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
-			continue
-		}
-		if message := detectErrorMessageFromJSONBytes(payload); message != "" {
-			return fmt.Errorf("upstream error: %s", message)
-		}
-		return nil
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	return errors.New("stream ended before a valid upstream event")
 }
 
 func TestChannel(c *gin.Context) {
@@ -1106,8 +972,6 @@ type channelTestSummary struct {
 	Enabled   int `json:"enabled"`
 }
 
-const channelTestModeManualAll = "manual_all"
-
 // performChannelTests runs the channel test loop synchronously, honoring ctx
 // cancellation so a system-task runner that loses its lease stops promptly. When
 // report is non-nil it is called after each channel with (processed, total) so
@@ -1170,7 +1034,7 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 		}
 
 		// enable channel
-		if result.localErr == nil && !isChannelEnabled && shouldEnableChannelAfterRecoveryProbe(newAPIError, channel.Status, milliseconds) {
+		if result.localErr == nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
 			service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 			summary.Enabled++
 		}
@@ -1214,7 +1078,7 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	if strings.TrimSpace(mode) == "" {
 		mode = operation_setting.GetMonitorSetting().ChannelTestMode
 	}
-	selected := selectChannelsForAutomaticTest(channels, mode, operation_setting.GetMonitorSetting().RecoveryMode)
+	selected := selectChannelsForAutomaticTest(channels, mode)
 	allowDisable := mode != operation_setting.ChannelTestModePassiveRecovery
 	summary := performChannelTests(ctx, selected, testUserID, allowDisable, report)
 	if notify && (ctx == nil || ctx.Err() == nil) {
@@ -1223,16 +1087,13 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 	return summary, nil
 }
 
-func selectChannelsForAutomaticTest(channels []*model.Channel, mode string, recoveryMode string) []*model.Channel {
+func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*model.Channel {
 	selected := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
 		if channel.Status == common.ChannelStatusManuallyDisabled {
 			continue
 		}
 		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
-			continue
-		}
-		if recoveryMode == "independent" && mode != channelTestModeManualAll && channel.Status == common.ChannelStatusAutoDisabled {
 			continue
 		}
 		selected = append(selected, channel)
@@ -1245,7 +1106,7 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string, reco
 // rejected so the caller does not mistake a scheduled run for this manual one.
 func TestAllChannels(c *gin.Context) {
 	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
-		Mode:   channelTestModeManualAll,
+		Mode:   operation_setting.ChannelTestModeScheduledAll,
 		Notify: true,
 	})
 	if err != nil {

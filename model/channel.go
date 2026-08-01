@@ -470,10 +470,6 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 	}
 	var deletedCount int64
 	for _, chunk := range lo.Chunk(ids, 200) {
-		if err := tx.Where("channel_id in (?)", chunk).Delete(&ChannelRecoveryState{}).Error; err != nil {
-			tx.Rollback()
-			return 0, err
-		}
 		result := tx.Where("id in (?)", chunk).Delete(&Channel{})
 		if result.Error != nil {
 			tx.Rollback()
@@ -610,15 +606,13 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("channel_id = ?", channel.Id).Delete(&ChannelRecoveryState{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Delete(channel).Error; err != nil {
-			return err
-		}
-		return tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
-	})
+	var err error
+	err = DB.Delete(channel).Error
+	if err != nil {
+		return err
+	}
+	err = channel.DeleteAbilities()
+	return err
 }
 
 var channelStatusLock sync.Mutex
@@ -911,36 +905,6 @@ func DeleteChannelByStatus(status int64) (int64, error) {
 func DeleteDisabledChannel() (int64, error) {
 	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
-}
-
-func GetAutoDisabledChannels() ([]*Channel, error) {
-	var channels []*Channel
-	err := DB.Where("status = ?", common.ChannelStatusAutoDisabled).Find(&channels).Error
-	return channels, err
-}
-
-func GetChannelsWithAutoDisabledMultiKeys() ([]*Channel, error) {
-	var channels []*Channel
-	err := DB.Find(&channels).Error
-	if err != nil {
-		return nil, err
-	}
-	result := make([]*Channel, 0, len(channels))
-	for _, channel := range channels {
-		if channel == nil || !channel.ChannelInfo.IsMultiKey {
-			continue
-		}
-		if channel.Status == common.ChannelStatusManuallyDisabled {
-			continue
-		}
-		for _, status := range channel.ChannelInfo.MultiKeyStatusList {
-			if status == common.ChannelStatusAutoDisabled {
-				result = append(result, channel)
-				break
-			}
-		}
-	}
-	return result, nil
 }
 
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {

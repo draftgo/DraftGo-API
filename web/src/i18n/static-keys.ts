@@ -52,13 +52,6 @@ export const STATIC_I18N_KEYS = [
   'Worker instances do not run master-only background tasks.',
   'Drawing task polling',
 
-  // Recovery probes
-  'Auto-disabled',
-  'Fast probing',
-  'Watching',
-  'Probation',
-  'Parked',
-
   // Pricing constants
   'Name',
   'Price: Low to High',

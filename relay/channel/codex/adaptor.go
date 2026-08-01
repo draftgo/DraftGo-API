@@ -101,11 +101,8 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	}
 	// codex: store must be false
 	request.Store = json.RawMessage("false")
-	// The Codex backend normally rejects this field, but recovery/channel tests
-	// need an explicit upstream output cap and use a minimal supported value.
-	if !info.IsChannelTest {
-		request.MaxOutputTokens = nil
-	}
+	// rm max_output_tokens
+	request.MaxOutputTokens = nil
 	request.Temperature = nil
 	return request, nil
 }

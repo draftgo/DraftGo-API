@@ -299,58 +299,6 @@ func RecordAutoDisableChannelAuditLog(channelId int, channelType int, channelNam
 	RecordOperationAuditLog(getRootUserIDForAudit(), content, "", "channel.auto_disable", params, nil, auditInfo)
 }
 
-type RecoveryProbeAuditParams struct {
-	ChannelId    int
-	ChannelName  string
-	KeyIndex     int
-	State        string
-	NextProbeAt  int64
-	LatencyMs    int64
-	CancelReason string
-	ErrorCode    string
-	ErrorMessage string
-}
-
-// RecordRecoveryProbeAuditLog records an upstream recovery call without
-// attributing it to user consumption or quota accounting.
-func RecordRecoveryProbeAuditLog(params RecoveryProbeAuditParams) {
-	adminInfo := map[string]interface{}{
-		"recovery_probe": map[string]interface{}{
-			"channel_id":    params.ChannelId,
-			"key_index":     params.KeyIndex,
-			"state":         params.State,
-			"next_probe_at": params.NextProbeAt,
-			"latency_ms":    params.LatencyMs,
-			"cancel_reason": params.CancelReason,
-			"error_code":    params.ErrorCode,
-			"error_message": params.ErrorMessage,
-		},
-	}
-	other := map[string]interface{}{
-		"op": buildOpField("channel.recovery_probe", map[string]interface{}{
-			"id":        params.ChannelId,
-			"name":      params.ChannelName,
-			"key_index": params.KeyIndex,
-			"state":     params.State,
-		}),
-		"admin_info": adminInfo,
-	}
-	log := &Log{
-		UserId:    getRootUserIDForAudit(),
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeSystem,
-		Content:   fmt.Sprintf("Recovery probe for channel %s (ID: %d)", params.ChannelName, params.ChannelId),
-		TokenName: "recovery_probe",
-		ChannelId: params.ChannelId,
-		UseTime:   int((params.LatencyMs + 999) / 1000),
-		IsStream:  true,
-		Other:     common.MapToJsonStr(other),
-	}
-	if err := createLog(log); err != nil {
-		common.SysLog("failed to record recovery probe log: " + err.Error())
-	}
-}
-
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
