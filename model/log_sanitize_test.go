@@ -28,10 +28,13 @@ func TestFormatUserLogsHidesModelMappingDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to parse sanitized other: %v", err)
 	}
-	for _, key := range []string{"admin_info", "is_model_mapped", "upstream_model_name", "stream_status"} {
+	for _, key := range []string{"admin_info", "is_model_mapped", "upstream_model_name"} {
 		if _, ok := other[key]; ok {
 			t.Fatalf("expected %s to be hidden from user log other: %s", key, logs[0].Other)
 		}
+	}
+	if _, ok := other["stream_status"]; !ok {
+		t.Fatalf("expected stream_status to remain visible to the log owner: %s", logs[0].Other)
 	}
 	if other["billing_source"] != "wallet" {
 		t.Fatalf("expected billing_source to remain, got %v", other["billing_source"])

@@ -102,7 +102,6 @@ func sanitizeUserLogOther(other string) string {
 	delete(otherMap, "audit_info")
 	delete(otherMap, "is_model_mapped")
 	delete(otherMap, "upstream_model_name")
-	delete(otherMap, "stream_status")
 	return common.MapToJsonStr(otherMap)
 }
 
