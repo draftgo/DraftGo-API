@@ -78,7 +78,7 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   allow_ips: '',
   group: DEFAULT_GROUP,
   cross_group_retry: true,
-  fallback_model_enabled: false,
+  fallback_model_enabled: true,
   fallback_models: [],
   tokenCount: 1,
 }
