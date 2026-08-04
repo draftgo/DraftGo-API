@@ -21,6 +21,7 @@ const (
 	ContextKeyTokenCrossGroupRetry      ContextKey = "token_cross_group_retry"
 	ContextKeyTokenFallbackModelEnabled ContextKey = "token_fallback_model_enabled"
 	ContextKeyTokenFallbackModels       ContextKey = "token_fallback_models"
+	ContextKeyTokenAutoGroups           ContextKey = "token_auto_groups"
 
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"

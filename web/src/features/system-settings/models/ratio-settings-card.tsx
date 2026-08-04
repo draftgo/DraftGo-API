@@ -34,6 +34,7 @@ import {
   useUpdateOption,
   useUpdateOptionsBulk,
 } from '../hooks/use-update-option'
+import { positiveIntegerSchema } from '../utils/numeric-field'
 import { GroupRatioForm } from './group-ratio-form'
 import { ModelRatioForm } from './model-ratio-form'
 import { ToolPriceSettings } from './tool-price-settings'
@@ -154,6 +155,7 @@ const createGroupSchema = (t: Translate) =>
         parsed.every((item) => typeof item === 'string'),
       predicateMessage: 'Expected a JSON array of group identifiers',
     }),
+    MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
     DefaultUseAutoGroup: z.boolean(),
     GroupSpecialUsableGroup: createJsonStringField(t),
   })
@@ -232,6 +234,7 @@ export function RatioSettingsCard({
       groupDefaults.GroupFallbackModels
     ),
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
+    MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
     DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
     GroupSpecialUsableGroup: normalizeJsonString(
       groupDefaults.GroupSpecialUsableGroup
@@ -324,6 +327,7 @@ export function RatioSettingsCard({
         groupDefaults.GroupFallbackModels
       ),
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
+      MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
       DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
       GroupSpecialUsableGroup: normalizeJsonString(
         groupDefaults.GroupSpecialUsableGroup
@@ -398,6 +402,7 @@ export function RatioSettingsCard({
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
         GroupFallbackModels: normalizeJsonString(values.GroupFallbackModels),
         AutoGroups: normalizeJsonString(values.AutoGroups),
+        MaxTokenAutoGroups: values.MaxTokenAutoGroups,
         DefaultUseAutoGroup: values.DefaultUseAutoGroup,
         GroupSpecialUsableGroup: normalizeJsonString(
           values.GroupSpecialUsableGroup
