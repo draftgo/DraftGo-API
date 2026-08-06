@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,4 +153,64 @@ func TestSessionLimitDoesNotRecordRejectedLoginAsSuccessful(t *testing.T) {
 	var stored model.User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, previousLastLoginAt, stored.LastLoginAt)
+}
+
+func TestRefreshAuthTriesNextRefreshCookieWhenFirstIsInvalid(t *testing.T) {
+	previousDB := model.DB
+	previousRedis := common.RedisEnabled
+	previousSecret := common.SessionSecret
+	previousCoverage := common.SessionCookieCoverSubdomainEnabled
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	model.DB = db
+	common.RedisEnabled = false
+	common.SessionSecret = "refresh-cookie-fallback-test-secret"
+	common.SessionCookieCoverSubdomainEnabled = true
+	t.Cleanup(func() {
+		model.DB = previousDB
+		common.RedisEnabled = previousRedis
+		common.SessionSecret = previousSecret
+		common.SessionCookieCoverSubdomainEnabled = previousCoverage
+	})
+
+	user := &model.User{
+		Username: "refresh-cookie-fallback-user", Password: "unused", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1,
+	}
+	require.NoError(t, db.Create(user).Error)
+	bundle, err := service.CreateLoginSession(user.Id, "password", "127.0.0.1", "agent")
+	require.NoError(t, err)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
+	c.Request.Host = "routergo.cn"
+	c.Request.Header.Set("Cookie", service.RefreshCookieName+"=not-a-valid-token;"+service.RefreshCookieName+"="+bundle.RefreshToken)
+
+	RefreshAuth(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool `json:"success"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.True(t, response.Success)
+	rawCookies := recorder.Header().Values("Set-Cookie")
+	require.Len(t, rawCookies, 2)
+	var hostOnly string
+	var domainCookie string
+	for _, raw := range rawCookies {
+		if strings.Contains(raw, "Domain=routergo.cn") {
+			domainCookie = raw
+		} else {
+			hostOnly = raw
+		}
+	}
+	require.NotEmpty(t, hostOnly)
+	require.NotEmpty(t, domainCookie)
+	assert.Contains(t, hostOnly, "Max-Age=0")
+	assert.NotContains(t, hostOnly, bundle.RefreshToken)
+	assert.NotContains(t, domainCookie, "Max-Age=0")
 }

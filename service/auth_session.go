@@ -310,13 +310,32 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	}
-	if common.SessionCookieCoverSubdomainEnabled {
-		refreshCookie.Domain = common.SessionCookieDomainForHost(c.Request.Host)
+	if domain := refreshCookieDomain(c.Request.Host); domain != "" {
+		// A host-only cookie written before subdomain coverage was enabled must
+		// be removed here; otherwise both cookies are sent on the next refresh
+		// and Request.Cookie() can pick the stale host-only token.
+		clearRefreshCookieAt(c, "")
+		refreshCookie.Domain = domain
 	}
 	http.SetCookie(c.Writer, refreshCookie)
 }
 
 func ClearRefreshCookie(c *gin.Context) {
+	clearRefreshCookieAt(c, "")
+	clearRefreshCookieAt(c, refreshCookieDomain(c.Request.Host))
+}
+
+// refreshCookieDomain returns the registrable-domain cookie suffix when the
+// subdomain coverage option is enabled, otherwise an empty string for the
+// host-only cookie.
+func refreshCookieDomain(host string) string {
+	if !common.SessionCookieCoverSubdomainEnabled {
+		return ""
+	}
+	return common.SessionCookieDomainForHost(host)
+}
+
+func clearRefreshCookieAt(c *gin.Context, domain string) {
 	refreshCookie := &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    "",
@@ -327,10 +346,46 @@ func ClearRefreshCookie(c *gin.Context) {
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	}
-	if common.SessionCookieCoverSubdomainEnabled {
-		refreshCookie.Domain = common.SessionCookieDomainForHost(c.Request.Host)
+	if domain != "" {
+		refreshCookie.Domain = domain
 	}
 	http.SetCookie(c.Writer, refreshCookie)
+}
+
+// ReadRefreshCookies returns every refresh cookie value in request order.
+// When subdomain coverage was enabled after users had already logged in, the
+// browser can briefly hold two same-name cookies (a legacy host-only one and a
+// newer .routergo.cn one). The server cannot distinguish them from the Cookie
+// header, so callers should try every value and WriteRefreshCookie removes
+// both variants, leaving only the newly written cookie behind.
+func ReadRefreshCookies(c *gin.Context) []string {
+	var candidates []string
+	for _, cookie := range c.Request.Cookies() {
+		if cookie.Name != RefreshCookieName || cookie.Value == "" {
+			continue
+		}
+		duplicate := false
+		for _, existing := range candidates {
+			if existing == cookie.Value {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			candidates = append(candidates, cookie.Value)
+		}
+	}
+	return candidates
+}
+
+// ReadRefreshCookie returns the preferred refresh cookie value. The returned
+// error matches http.ErrNoCookie when no usable cookie is present.
+func ReadRefreshCookie(c *gin.Context) (string, error) {
+	candidates := ReadRefreshCookies(c)
+	if len(candidates) == 0 {
+		return "", http.ErrNoCookie
+	}
+	return candidates[0], nil
 }
 
 func issueAuthBundle(session *model.UserSession, rawRefreshToken string, current bool) (*AuthBundle, error) {

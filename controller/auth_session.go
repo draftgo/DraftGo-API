@@ -16,38 +16,45 @@ import (
 
 func RefreshAuth(c *gin.Context) {
 	setAuthNoStore(c)
-	rawRefreshToken, err := c.Cookie(service.RefreshCookieName)
-	if err != nil || rawRefreshToken == "" {
+	candidates := service.ReadRefreshCookies(c)
+	if len(candidates) == 0 {
 		service.ClearRefreshCookie(c)
 		writeAuthSessionError(c, service.ErrRefreshTokenInvalid)
 		return
 	}
-	bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.GetHeader("X-Auth-Session"), c.ClientIP(), c.Request.UserAgent())
-	if err != nil {
-		if errors.Is(err, service.ErrRefreshTokenInvalid) || errors.Is(err, service.ErrLoginSessionRevoked) {
-			service.ClearRefreshCookie(c)
+	var lastErr error
+	for _, rawRefreshToken := range candidates {
+		bundle, user, err := service.RefreshLoginSession(rawRefreshToken, c.GetHeader("X-Auth-Session"), c.ClientIP(), c.Request.UserAgent())
+		if err == nil {
+			service.WriteRefreshCookie(c, bundle.RefreshToken)
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "",
+				"data": gin.H{
+					"access_token":      bundle.AccessToken,
+					"token_type":        bundle.TokenType,
+					"access_expires_at": bundle.AccessExpiresAt,
+					"user":              buildSelfUserData(user),
+					"session":           bundle.Session,
+				},
+			})
+			return
 		}
-		writeAuthSessionError(c, err)
-		return
+		lastErr = err
+		if !errors.Is(err, service.ErrRefreshTokenInvalid) &&
+			!errors.Is(err, service.ErrLoginSessionRevoked) &&
+			!errors.Is(err, service.ErrRefreshRace) {
+			break
+		}
 	}
-	service.WriteRefreshCookie(c, bundle.RefreshToken)
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data": gin.H{
-			"access_token":      bundle.AccessToken,
-			"token_type":        bundle.TokenType,
-			"access_expires_at": bundle.AccessExpiresAt,
-			"user":              buildSelfUserData(user),
-			"session":           bundle.Session,
-		},
-	})
+	service.ClearRefreshCookie(c)
+	writeAuthSessionError(c, lastErr)
 }
 
 func AuthLogout(c *gin.Context) {
 	setAuthNoStore(c)
 	expectedSID := strings.TrimSpace(c.GetHeader("X-Auth-Session"))
-	rawRefreshToken, cookieErr := c.Cookie(service.RefreshCookieName)
+	rawRefreshToken, cookieErr := service.ReadRefreshCookie(c)
 	cookieSID, hasCookieSID := service.RefreshTokenSID(rawRefreshToken)
 	if expectedSID != "" && cookieErr == nil && hasCookieSID && cookieSID != expectedSID {
 		writeAuthSessionError(c, service.ErrLoginSessionMismatch)

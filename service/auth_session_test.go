@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -428,4 +430,87 @@ func TestUserAuthVersionInvalidatesExistingSession(t *testing.T) {
 	assert.ErrorIs(t, err, ErrLoginSessionRevoked)
 	_, err = CreateLoginSessionAtAuthVersion(user.Id, identity.UserAuthVersion, "2fa", "127.0.0.1", "test-agent")
 	assert.ErrorIs(t, err, ErrLoginSessionRevoked, "a pending 2FA flow must not survive an auth-version change")
+}
+
+func TestReadRefreshCookiesReturnsAllValuesInRequestOrder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
+	c.Request.Header.Set("Cookie",
+		RefreshCookieName+"=legacy-host-only;"+RefreshCookieName+"=rotated-domain;"+RefreshCookieName+"=legacy-host-only")
+
+	candidates := ReadRefreshCookies(c)
+	require.Equal(t, []string{"legacy-host-only", "rotated-domain"}, candidates)
+	token, err := ReadRefreshCookie(c)
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-host-only", token)
+}
+
+func TestClearRefreshCookieClearsBothVariantsWhenSubdomainCoverageEnabled(t *testing.T) {
+	previousCoverage := common.SessionCookieCoverSubdomainEnabled
+	common.SessionCookieCoverSubdomainEnabled = true
+	t.Cleanup(func() { common.SessionCookieCoverSubdomainEnabled = previousCoverage })
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
+	c.Request.Host = "routergo.cn"
+
+	ClearRefreshCookie(c)
+
+	rawCookies := recorder.Header().Values("Set-Cookie")
+	require.Len(t, rawCookies, 2)
+	var hostOnly string
+	var domainCookie string
+	for _, raw := range rawCookies {
+		if strings.Contains(raw, "Domain=routergo.cn") {
+			domainCookie = raw
+		} else {
+			hostOnly = raw
+		}
+	}
+	require.NotEmpty(t, hostOnly)
+	require.NotEmpty(t, domainCookie)
+	assert.Contains(t, hostOnly, RefreshCookieName+"=;")
+	assert.Contains(t, hostOnly, "Path=/api/user/auth")
+	assert.Contains(t, hostOnly, "Max-Age=0")
+	assert.Contains(t, domainCookie, RefreshCookieName+"=;")
+	assert.Contains(t, domainCookie, "Path=/api/user/auth")
+	assert.Contains(t, domainCookie, "Max-Age=0")
+}
+
+func TestWriteRefreshCookieRemovesLegacyHostOnlyCookieWhenSubdomainCoverageEnabled(t *testing.T) {
+	previousCoverage := common.SessionCookieCoverSubdomainEnabled
+	common.SessionCookieCoverSubdomainEnabled = true
+	t.Cleanup(func() { common.SessionCookieCoverSubdomainEnabled = previousCoverage })
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/user/auth/refresh", nil)
+	c.Request.Host = "routergo.cn"
+
+	WriteRefreshCookie(c, "session-id.refresh-secret")
+
+	rawCookies := recorder.Header().Values("Set-Cookie")
+	require.Len(t, rawCookies, 2)
+	var hostOnly string
+	var domainCookie string
+	for _, raw := range rawCookies {
+		if strings.Contains(raw, "Domain=routergo.cn") {
+			domainCookie = raw
+		} else {
+			hostOnly = raw
+		}
+	}
+	require.NotEmpty(t, hostOnly)
+	require.NotEmpty(t, domainCookie)
+	assert.Contains(t, hostOnly, RefreshCookieName+"=;")
+	assert.Contains(t, hostOnly, "Path=/api/user/auth")
+	assert.Contains(t, hostOnly, "Max-Age=0")
+	assert.Contains(t, domainCookie, RefreshCookieName+"=session-id.refresh-secret")
+	assert.Contains(t, domainCookie, "Domain=routergo.cn")
+	assert.Contains(t, domainCookie, "Path=/api/user/auth")
 }
