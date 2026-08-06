@@ -118,7 +118,7 @@ export function useUpdateOptionsBulk() {
 
       if (
         Object.keys(variables.options).some((key) =>
-          STATUS_RELATED_KEYS.includes(key)
+          STATUS_RELATED_KEYS.has(key)
         )
       ) {
         queryClient.invalidateQueries({ queryKey: ['status'] })
