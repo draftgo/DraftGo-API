@@ -77,7 +77,7 @@ export function EmbedPage() {
   if (type === 'html') {
     return (
       <PublicLayout showMainContainer={false}>
-        <div className='h-[calc(100svh-4rem)] pt-16'>
+        <div className='h-svh pt-16'>
           <iframe
             ref={iframeRef}
             srcDoc={content}
@@ -93,7 +93,7 @@ export function EmbedPage() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <div className='h-[calc(100svh-4rem)] pt-16'>
+      <div className='h-svh pt-16'>
         <iframe
           ref={iframeRef}
           src={content}
