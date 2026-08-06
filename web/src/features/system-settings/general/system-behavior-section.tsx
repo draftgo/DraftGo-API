@@ -42,6 +42,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const behaviorSchema = z.object({
   DefaultCollapseSidebar: z.boolean(),
+  SessionCookieCoverSubdomainEnabled: z.boolean(),
   DemoSiteEnabled: z.boolean(),
   SelfUseModeEnabled: z.boolean(),
 })
@@ -134,6 +135,29 @@ export function SystemBehaviorSection({
                   <FormLabel>{t('Self-Use Mode')}</FormLabel>
                   <FormDescription>
                     {t('Optimize system for self-hosted single-user usage')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='SessionCookieCoverSubdomainEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('CORS Override Subdomains')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Set the login cookie domain to the root domain so all subdomains share the login state'
+                    )}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>

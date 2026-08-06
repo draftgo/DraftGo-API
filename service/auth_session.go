@@ -300,7 +300,7 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	if maxAge < 1 {
 		maxAge = 1
 	}
-	http.SetCookie(c.Writer, &http.Cookie{
+	refreshCookie := &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    rawToken,
 		Path:     "/api/user/auth",
@@ -309,11 +309,15 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 		HttpOnly: true,
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
+	if common.SessionCookieCoverSubdomainEnabled {
+		refreshCookie.Domain = common.SessionCookieDomainForHost(c.Request.Host)
+	}
+	http.SetCookie(c.Writer, refreshCookie)
 }
 
 func ClearRefreshCookie(c *gin.Context) {
-	http.SetCookie(c.Writer, &http.Cookie{
+	refreshCookie := &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    "",
 		Path:     "/api/user/auth",
@@ -322,7 +326,11 @@ func ClearRefreshCookie(c *gin.Context) {
 		HttpOnly: true,
 		Secure:   common.SessionCookieSecure,
 		SameSite: http.SameSiteStrictMode,
-	})
+	}
+	if common.SessionCookieCoverSubdomainEnabled {
+		refreshCookie.Domain = common.SessionCookieDomainForHost(c.Request.Host)
+	}
+	http.SetCookie(c.Writer, refreshCookie)
 }
 
 func issueAuthBundle(session *model.UserSession, rawRefreshToken string, current bool) (*AuthBundle, error) {

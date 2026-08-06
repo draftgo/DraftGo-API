@@ -346,6 +346,7 @@ export type BillingSettings = {
 
 export type OperationsSettings = {
   DefaultCollapseSidebar: boolean
+  SessionCookieCoverSubdomainEnabled: boolean
   DemoSiteEnabled: boolean
   SelfUseModeEnabled: boolean
   QuotaRemindThreshold: string

@@ -6,7 +6,26 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
+
+// SessionCookieDomainForHost returns a cookie Domain covering the registrable
+// domain of host, e.g. "routergo.cn" -> ".routergo.cn".
+func SessionCookieDomainForHost(host string) string {
+	hostname := strings.ToLower(strings.TrimSpace(host))
+	if h, _, err := net.SplitHostPort(hostname); err == nil {
+		hostname = h
+	}
+	if net.ParseIP(hostname) != nil {
+		return ""
+	}
+	root, err := publicsuffix.EffectiveTLDPlusOne(hostname)
+	if err != nil || !strings.Contains(root, ".") {
+		return ""
+	}
+	return "." + root
+}
 
 // NormalizeOrigin validates and canonicalizes a browser origin. Only an exact
 // scheme/host/effective-port match is meaningful; paths and wildcards are not

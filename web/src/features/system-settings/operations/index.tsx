@@ -28,6 +28,7 @@ import {
 
 const defaultOperationsSettings: OperationsSettings = {
   DefaultCollapseSidebar: false,
+  SessionCookieCoverSubdomainEnabled: false,
   DemoSiteEnabled: false,
   SelfUseModeEnabled: false,
   QuotaRemindThreshold: '',

@@ -34,6 +34,8 @@ const OPERATIONS_SECTIONS = [
       <SystemBehaviorSection
         defaultValues={{
           DefaultCollapseSidebar: settings.DefaultCollapseSidebar,
+          SessionCookieCoverSubdomainEnabled:
+            settings.SessionCookieCoverSubdomainEnabled,
           DemoSiteEnabled: settings.DemoSiteEnabled,
           SelfUseModeEnabled: settings.SelfUseModeEnabled,
         }}

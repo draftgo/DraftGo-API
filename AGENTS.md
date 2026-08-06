@@ -137,6 +137,7 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 - Frontend UI text must support i18n with `i18next`/`react-i18next`. Use flat JSON locale files in `web/src/i18n/locales/{lang}.json`, with English source strings as keys.
 - In React components, use `useTranslation()` and call `t('English key')` for user-facing text.
 - Follow `web/AGENTS.md` for detailed frontend conventions, including TypeScript, component structure, styling, accessibility, testing, and build checks.
+- Do not install frontend dependencies locally for verification; let GitHub Actions run frontend builds and checks. If a local install was created accidentally, remove `web/node_modules` before committing.
 
 ### Project Governance
 
